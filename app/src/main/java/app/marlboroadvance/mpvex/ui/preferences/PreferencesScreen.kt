@@ -14,6 +14,7 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ViewQuilt
 import androidx.compose.material.icons.outlined.Audiotrack
 import androidx.compose.material.icons.outlined.Code
+import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Gesture
 import androidx.compose.material.icons.outlined.Info
@@ -282,7 +283,27 @@ object PreferencesScreen : Screen {
                 },
                 onClick = { backstack.add(SubtitlesPreferencesScreen) },
               )
-              
+
+              PreferenceDivider()
+
+              Preference(
+                title = { Text(text = "Danmaku") },
+                summary = {
+                  Text(
+                    text = "Match and display comments from the dandanplay open danmaku network",
+                    color = MaterialTheme.colorScheme.outline,
+                  )
+                },
+                icon = {
+                  Icon(
+                    Icons.Outlined.Forum,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                  )
+                },
+                onClick = { backstack.add(DanmakuPreferencesScreen) },
+              )
+               
               PreferenceDivider()
               
               Preference(

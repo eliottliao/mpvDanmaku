@@ -19,6 +19,7 @@ android {
     targetSdk = 36
     versionCode = 129
     versionName = "1.2.9"
+    testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
     vectorDrawables {
       useSupportLibrary = true
@@ -26,6 +27,16 @@ android {
 
     buildConfigField("String", "GIT_SHA", "\"${getCommitSha()}\"")
     buildConfigField("int", "GIT_COUNT", getCommitCount())
+    buildConfigField(
+      "String",
+      "DANDANPLAY_APP_ID",
+      buildConfigString(secretValue("DANDANPLAY_APP_ID")),
+    )
+    buildConfigField(
+      "String",
+      "DANDANPLAY_APP_SECRET",
+      buildConfigString(secretValue("DANDANPLAY_APP_SECRET")),
+    )
   }
 
   flavorDimensions += "distribution"
@@ -125,6 +136,19 @@ android {
   androidResources {
     generateLocaleConfig = true
   }
+
+  testOptions {
+    unitTests {
+      isReturnDefaultValues = true
+    }
+  }
+
+  sourceSets {
+    getByName("androidTest") {
+      // Expose the exported Room schemas to MigrationTestHelper.
+      assets.srcDir("$projectDir/schemas")
+    }
+  }
 }
 
 androidComponents {
@@ -220,6 +244,20 @@ dependencies {
   implementation(libs.nanohttpd)
   implementation(libs.lazycolumnscrollbar)
   implementation(libs.reorderable)
+
+  // Unit test dependencies
+  testImplementation(libs.junit)
+  testImplementation(libs.kotlinx.coroutines.test)
+  testImplementation(libs.mockwebserver3)
+  testImplementation(libs.okhttp.tls)
+  testImplementation(libs.mockito.core)
+  testImplementation(libs.mockito.kotlin)
+
+  // Instrumented test dependencies
+  androidTestImplementation(libs.room.testing)
+  androidTestImplementation(libs.androidx.test.core)
+  androidTestImplementation(libs.androidx.test.runner)
+  androidTestImplementation(libs.androidx.test.ext.junit)
 }
 
 /* ---------------- Git helpers ---------------- */
@@ -247,3 +285,11 @@ fun runCommand(command: String): String? =
   } catch (e: Exception) {
     null
   }
+
+fun secretValue(name: String): String =
+  providers.gradleProperty(name).orNull
+    ?: System.getenv(name)
+    ?: ""
+
+fun buildConfigString(value: String): String =
+  "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""

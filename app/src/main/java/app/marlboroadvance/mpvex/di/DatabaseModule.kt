@@ -450,6 +450,50 @@ val MIGRATION_8_9 = object : Migration(8, 9) {
       } else {
         android.util.Log.d("Migration_8_9", "Schema is correct, no repair needed")
       }
+
+      db.execSQL(
+        """
+        CREATE TABLE IF NOT EXISTS `danmaku_media_bindings` (
+          `mediaKey` TEXT NOT NULL,
+          `episodeId` INTEGER NOT NULL,
+          `animeId` INTEGER,
+          `animeTitle` TEXT NOT NULL,
+          `episodeTitle` TEXT NOT NULL,
+          `matchSource` TEXT NOT NULL,
+          `serverShiftSeconds` REAL NOT NULL,
+          `userOffsetSeconds` REAL NOT NULL,
+          `fileHash` TEXT,
+          `fileSize` INTEGER NOT NULL,
+          `createdAt` INTEGER NOT NULL,
+          `updatedAt` INTEGER NOT NULL,
+          PRIMARY KEY(`mediaKey`)
+        )
+        """.trimIndent(),
+      )
+      db.execSQL(
+        "CREATE INDEX IF NOT EXISTS `index_danmaku_media_bindings_episodeId` ON `danmaku_media_bindings` (`episodeId`)",
+      )
+      db.execSQL(
+        """
+        CREATE TABLE IF NOT EXISTS `danmaku_cache_metadata` (
+          `cacheKey` TEXT NOT NULL,
+          `episodeId` INTEGER NOT NULL,
+          `fileName` TEXT NOT NULL,
+          `commentCount` INTEGER NOT NULL,
+          `maxCid` INTEGER NOT NULL,
+          `fetchedAt` INTEGER NOT NULL,
+          `expiresAt` INTEGER NOT NULL,
+          `lastValidatedAt` INTEGER NOT NULL,
+          `etag` TEXT,
+          `fileSize` INTEGER NOT NULL,
+          `unchangedFetches` INTEGER NOT NULL,
+          PRIMARY KEY(`cacheKey`)
+        )
+        """.trimIndent(),
+      )
+      db.execSQL(
+        "CREATE INDEX IF NOT EXISTS `index_danmaku_cache_metadata_episodeId` ON `danmaku_cache_metadata` (`episodeId`)",
+      )
       
       android.util.Log.d("Migration_8_9", "Migration completed successfully")
     } catch (e: Exception) {
@@ -475,7 +519,6 @@ val DatabaseModule =
         .databaseBuilder(context, MpvExDatabase::class.java, "mpvex.db")
         .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
         .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
-        .fallbackToDestructiveMigration(true) // Fallback if migration fails (last resort)
         .build()
     }
 
@@ -510,5 +553,9 @@ val DatabaseModule =
       PlaylistRepository(
         playlistDao = get<MpvExDatabase>().playlistDao(),
       )
+    }
+
+    single {
+      get<MpvExDatabase>().danmakuDao()
     }
   }

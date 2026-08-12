@@ -153,6 +153,7 @@ Copy the contents of `keystore.txt` and paste it as the value for the `SIGNING_K
 - [mpvKt](https://github.com/abdallahmehiz/mpvKt)
 - [Next player](https://github.com/anilbeesetti/nextplayer)
 - [Gramophone](https://github.com/FoedusProgramme/Gramophone)
+- Danmaku matching and comments are provided by the [dandanplay open danmaku network](https://www.dandanplay.com/).
 
 ---
 

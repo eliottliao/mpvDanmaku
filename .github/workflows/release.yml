@@ -31,10 +31,18 @@ jobs:
 
       - name: Build standard release with Gradle
         run: ./gradlew assembleStandardRelease --stacktrace
+        env:
+          DANDANPLAY_APP_ID: ${{ secrets.DANDANPLAY_APP_ID }}
+          DANDANPLAY_APP_SECRET: ${{ secrets.DANDANPLAY_APP_SECRET }}
 
       - name: Build Play Store release with Gradle
         run: ./gradlew assemblePlaystoreRelease --stacktrace
+        env:
+          DANDANPLAY_APP_ID: ${{ secrets.DANDANPLAY_APP_ID }}
+          DANDANPLAY_APP_SECRET: ${{ secrets.DANDANPLAY_APP_SECRET }}
 
+      # F-Droid variant intentionally builds without dandanplay credentials
+      # (falls back to empty-string degradation path in secretValue())
       - name: Build F-Droid release with Gradle
         run: ./gradlew assembleFdroidRelease --stacktrace
 

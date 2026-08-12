@@ -17,10 +17,15 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.CreationExtras
 import app.marlboroadvance.mpvex.R
+import app.marlboroadvance.mpvex.domain.danmaku.DanmakuBindingRepository
+import app.marlboroadvance.mpvex.domain.danmaku.DanmakuCoordinator
 import app.marlboroadvance.mpvex.preferences.AudioPreferences
+import app.marlboroadvance.mpvex.preferences.DanmakuPreferences
 import app.marlboroadvance.mpvex.preferences.GesturePreferences
 import app.marlboroadvance.mpvex.preferences.PlayerPreferences
 import app.marlboroadvance.mpvex.preferences.SubtitlesPreferences
+import app.marlboroadvance.mpvex.repository.dandanplay.DandanplayRepository
+import app.marlboroadvance.mpvex.repository.dandanplay.MediaFingerprintProvider
 import app.marlboroadvance.mpvex.repository.wyzie.WyzieSearchRepository
 import app.marlboroadvance.mpvex.repository.wyzie.WyzieSubtitle
 import app.marlboroadvance.mpvex.utils.media.ChecksumUtils
@@ -91,6 +96,28 @@ class PlayerViewModel(
   private val json: Json by inject()
   private val playbackStateDao: app.marlboroadvance.mpvex.database.dao.PlaybackStateDao by inject()
   private val wyzieRepository: WyzieSearchRepository by inject()
+
+  // Dandanplay danmaku
+  private val danmakuPreferences: DanmakuPreferences by inject()
+  private val danmakuFingerprintProvider: MediaFingerprintProvider by inject()
+  private val danmakuBindingRepository: DanmakuBindingRepository by inject()
+  private val danmakuRepository: DandanplayRepository? = getKoin().getOrNull()
+
+  val danmaku = DanmakuCoordinator(
+    repository = danmakuRepository,
+    fingerprintProvider = danmakuFingerprintProvider,
+    bindingRepository = danmakuBindingRepository,
+    preferences = danmakuPreferences,
+    scope = viewModelScope,
+  )
+
+  fun openDanmaku(
+    uri: Uri,
+    fileName: String,
+    durationSeconds: Double,
+  ) {
+    danmaku.openMedia(uri, fileName, durationSeconds)
+  }
 
   // Playlist items for the playlist sheet
   private val _playlistItems = kotlinx.coroutines.flow.MutableStateFlow<List<app.marlboroadvance.mpvex.ui.player.controls.components.sheets.PlaylistItem>>(emptyList())
@@ -167,11 +194,16 @@ class PlayerViewModel(
     // Poll precise position only when playing
     viewModelScope.launch {
       while (isActive) {
-        val time = MPVLib.getPropertyDouble("time-pos")
-        if (time != null) {
-          _precisePosition.value = time.toFloat()
+        if (paused != true) {
+          val time = MPVLib.getPropertyDouble("time-pos")
+          if (time != null) {
+            _precisePosition.value = time.toFloat()
+          }
+          delay(42) // ~24fps updates
+        } else {
+          // Paused: position cannot change, poll lazily until playback resumes
+          delay(100)
         }
-        delay(42) // ~24fps updates
       }
     }
 
@@ -1889,6 +1921,7 @@ class PlayerViewModel(
   }
 
   override fun onCleared() {
+    danmaku.close()
     super.onCleared()
   }
 }

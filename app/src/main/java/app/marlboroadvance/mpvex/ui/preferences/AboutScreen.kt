@@ -472,6 +472,43 @@ object AboutScreen : Screen {
           }
         }
 
+        Spacer(Modifier.height(8.dp))
+
+        PreferenceSectionHeader(title = "Data sources")
+        PreferenceCard {
+          Row(
+            modifier =
+              Modifier
+                .fillMaxWidth()
+                .clickable {
+                  context.startActivity(
+                    Intent(Intent.ACTION_VIEW, "https://www.dandanplay.com/".toUri()),
+                  )
+                }.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+          ) {
+            Icon(
+              imageVector = Icons.Filled.Info,
+              contentDescription = null,
+              modifier = Modifier.size(24.dp),
+              tint = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(modifier = Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+              Text(
+                text = "dandanplay open danmaku network",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Medium,
+              )
+              Text(
+                text = "Optional episode matching and danmaku comments",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.outline,
+              )
+            }
+          }
+        }
+
         Spacer(Modifier.height(12.dp))
       }
     }

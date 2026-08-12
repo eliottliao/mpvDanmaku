@@ -41,6 +41,7 @@ import app.marlboroadvance.mpvex.domain.playbackstate.repository.PlaybackStateRe
 import app.marlboroadvance.mpvex.preferences.AdvancedPreferences
 import app.marlboroadvance.mpvex.preferences.AudioPreferences
 import app.marlboroadvance.mpvex.preferences.BrowserPreferences
+import app.marlboroadvance.mpvex.preferences.DanmakuPreferences
 import app.marlboroadvance.mpvex.preferences.PlayerPreferences
 import app.marlboroadvance.mpvex.preferences.SubtitlesPreferences
 import app.marlboroadvance.mpvex.ui.player.controls.PlayerControls
@@ -127,6 +128,11 @@ class PlayerActivity :
    * Preferences for subtitle settings.
    */
   private val subtitlesPreferences: SubtitlesPreferences by inject()
+
+  /**
+   * Preferences for dandanplay danmaku playback.
+   */
+  private val danmakuPreferences: DanmakuPreferences by inject()
 
   /**
    * Preferences for advanced settings.
@@ -339,6 +345,7 @@ class PlayerActivity :
     setupAudio()
     setupBackPressHandler()
     setupPlayerControls()
+    setupDanmakuOverlay()
     setupPipHelper()
     setupMediaSession()
 
@@ -487,6 +494,26 @@ class PlayerActivity :
           modifier = Modifier,
         )
       }
+    }
+  }
+
+  /**
+   * Wires the dandanplay danmaku overlay to the mpv clock and renderer state.
+   */
+  private fun setupDanmakuOverlay() {
+    binding.danmakuOverlay.setClockProviders(
+      positionMillisProvider = {
+        ((MPVLib.getPropertyDouble("time-pos") ?: 0.0) * 1000).toLong()
+      },
+      isPlayingProvider = {
+        MPVLib.getPropertyBoolean("pause") != true
+      },
+    )
+    lifecycleScope.launch {
+      viewModel.danmaku.items.collect { binding.danmakuOverlay.setDanmakuItems(it) }
+    }
+    lifecycleScope.launch {
+      viewModel.danmaku.renderConfig.collect { binding.danmakuOverlay.setRenderConfig(it) }
     }
   }
 
@@ -683,6 +710,8 @@ class PlayerActivity :
       if (!isFinishing) {
         saveVideoPlaybackState(fileName)
       }
+
+      binding.danmakuOverlay.notifyPlaybackStateChanged()
     }.onFailure { e ->
       Log.e(TAG, "Error during onPause", e)
     }
@@ -1045,6 +1074,7 @@ class PlayerActivity :
   override fun onResume() {
     super.onResume()
     updateVolume()
+    runCatching { binding.danmakuOverlay.notifyPlaybackStateChanged() }
   }
 
   /**
@@ -1777,6 +1807,16 @@ class PlayerActivity :
     )
     updateMediaSessionPlaybackState(isPlaying = true)
 
+    // Kick off dandanplay danmaku matching for the newly loaded media.
+    // A null duration falls back to file-name-only matching.
+    (playlist.getOrNull(playlistIndex) ?: intent.data)?.let { danmakuUri ->
+      viewModel.openDanmaku(
+        uri = danmakuUri,
+        fileName = fileName,
+        durationSeconds = MPVLib.getPropertyDouble("duration") ?: 0.0,
+      )
+    }
+
     // Asynchronously fetch better filename from HTTP headers for network streams
     fetchNetworkStreamTitle()
   }
@@ -2356,6 +2396,14 @@ class PlayerActivity :
     pipHelper.onPictureInPictureModeChanged(isInPictureInPictureMode)
 
     binding.controls.alpha = if (isInPictureInPictureMode) 0f else 1f
+
+    // Hide the danmaku overlay in PiP unless the user explicitly enabled it
+    binding.danmakuOverlay.visibility =
+      if (isInPictureInPictureMode && !danmakuPreferences.showInPip.get()) {
+        View.GONE
+      } else {
+        View.VISIBLE
+      }
 
     runCatching {
       if (isInPictureInPictureMode) {

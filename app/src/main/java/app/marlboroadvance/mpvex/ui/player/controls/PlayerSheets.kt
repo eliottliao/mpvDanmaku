@@ -23,6 +23,7 @@ import app.marlboroadvance.mpvex.ui.player.controls.components.sheets.PlaylistSh
 import app.marlboroadvance.mpvex.ui.player.controls.components.sheets.SubtitlesSheet
 import app.marlboroadvance.mpvex.ui.player.controls.components.sheets.OnlineSubtitleSearchSheet
 import app.marlboroadvance.mpvex.ui.player.controls.components.sheets.VideoZoomSheet
+import app.marlboroadvance.mpvex.ui.player.danmaku.DanmakuSheet
 import app.marlboroadvance.mpvex.utils.media.MediaInfoParser
 import dev.vivvvek.seeker.Segment
 import kotlinx.collections.immutable.ImmutableList
@@ -192,6 +193,25 @@ fun PlayerSheets(
         selectedEpisode = selectedEpisode,
         onSelectEpisode = { viewModel.selectEpisode(it) },
         onClearMediaSelection = { viewModel.clearMediaSelection() }
+      )
+    }
+
+    Sheets.Danmaku -> {
+      val danmakuState by viewModel.danmaku.state.composeCollectAsState()
+      DanmakuSheet(
+        state = danmakuState,
+        onEnabledChange = viewModel.danmaku::setEnabled,
+        onCandidateSelect = viewModel.danmaku::selectCandidate,
+        onSearchQueryChange = viewModel.danmaku::updateSearchQuery,
+        onSearch = viewModel.danmaku::search,
+        onRefresh = viewModel.danmaku::refresh,
+        onRematch = viewModel.danmaku::rematch,
+        onOffsetChange = viewModel.danmaku::setOffset,
+        onOpacityChange = viewModel.danmaku::setOpacity,
+        onFontSizeChange = viewModel.danmaku::setFontSize,
+        onDensityChange = viewModel.danmaku::setDensity,
+        onDisplayAreaChange = viewModel.danmaku::setDisplayArea,
+        onDismissRequest = onDismissRequest,
       )
     }
 

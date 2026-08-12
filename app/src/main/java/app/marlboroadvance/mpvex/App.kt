@@ -34,6 +34,7 @@ class App : Application() {
         DatabaseModule,
         FileManagerModule,
         app.marlboroadvance.mpvex.di.domainModule,
+        app.marlboroadvance.mpvex.di.danmakuModule,
       )
     }
 

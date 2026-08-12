@@ -94,6 +94,7 @@ enum class Sheets {
   PlaybackSpeed,
   SubtitleTracks,
   OnlineSubtitleSearch,
+  Danmaku,
   AudioTracks,
   Chapters,
   Decoders,

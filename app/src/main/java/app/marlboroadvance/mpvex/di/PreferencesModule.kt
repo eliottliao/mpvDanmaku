@@ -6,6 +6,7 @@ import app.marlboroadvance.mpvex.preferences.AppearancePreferences
 import app.marlboroadvance.mpvex.preferences.AudioPreferences
 import app.marlboroadvance.mpvex.preferences.BrowserPreferences
 import app.marlboroadvance.mpvex.preferences.DecoderPreferences
+import app.marlboroadvance.mpvex.preferences.DanmakuPreferences
 import app.marlboroadvance.mpvex.preferences.FoldersPreferences
 import app.marlboroadvance.mpvex.preferences.GesturePreferences
 import app.marlboroadvance.mpvex.preferences.PlayerPreferences
@@ -27,6 +28,7 @@ val PreferencesModule =
     singleOf(::GesturePreferences)
     singleOf(::DecoderPreferences)
     singleOf(::SubtitlesPreferences)
+    singleOf(::DanmakuPreferences)
     singleOf(::AudioPreferences)
     singleOf(::AdvancedPreferences)
     single { BrowserPreferences(get(), androidContext()) }

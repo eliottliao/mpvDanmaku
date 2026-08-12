@@ -45,6 +45,7 @@ import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.ShuffleOn
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Subtitles
+import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material.icons.filled.ZoomOutMap
 import androidx.compose.material.icons.filled.Flip
@@ -576,6 +577,16 @@ fun RenderPlayerButton(
         Icons.Default.Subtitles,
         onClick = { onOpenSheet(Sheets.SubtitleTracks) },
         onLongClick = { onOpenPanel(Panels.SubtitleDelay) },
+        color = if (hideBackground) controlColor else MaterialTheme.colorScheme.onSurface,
+        modifier = Modifier.size(buttonSize),
+      )
+    }
+
+    PlayerButton.DANMAKU -> {
+      ControlsButton(
+        Icons.Default.Forum,
+        onClick = { onOpenSheet(Sheets.Danmaku) },
+        title = "Danmaku",
         color = if (hideBackground) controlColor else MaterialTheme.colorScheme.onSurface,
         modifier = Modifier.size(buttonSize),
       )

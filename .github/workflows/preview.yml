@@ -38,6 +38,9 @@ jobs:
 
       - name: Build with Gradle
         run: ./gradlew assembleStandardPreview
+        env:
+          DANDANPLAY_APP_ID: ${{ secrets.DANDANPLAY_APP_ID }}
+          DANDANPLAY_APP_SECRET: ${{ secrets.DANDANPLAY_APP_SECRET }}
 
       - name: Sign APKs
         run: |

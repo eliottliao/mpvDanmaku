@@ -9,6 +9,14 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
+    <app.marlboroadvance.mpvex.ui.player.danmaku.DanmakuOverlayView
+        android:id="@+id/danmaku_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clickable="false"
+        android:focusable="false"
+        android:importantForAccessibility="no" />
+
     <androidx.compose.ui.platform.ComposeView
         android:id="@+id/controls"
         android:layout_width="match_parent"
