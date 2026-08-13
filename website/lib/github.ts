@@ -18,14 +18,14 @@ export interface GitHubContributor {
   public_repos?: number;
 }
 
-const REPO_OWNER = "marlboro-advance";
-const REPO_NAME = "mpvEx";
+const [REPO_OWNER, REPO_NAME] = (process.env.NEXT_PUBLIC_GITHUB_REPOSITORY ?? "").split("/");
 const GITHUB_API_URL = "https://api.github.com";
 
 export async function getRepositoryContributors(
   limit?: number,
 ): Promise<GitHubContributor[]> {
   try {
+    if (!REPO_OWNER || !REPO_NAME) return [];
     const url = `${GITHUB_API_URL}/repos/${REPO_OWNER}/${REPO_NAME}/contributors?per_page=${limit || 100}&sort=contributions`;
 
     const response = await fetch(url, {
@@ -74,6 +74,7 @@ export async function getContributorDetails(
 
 export async function getRepositoryStats() {
   try {
+    if (!REPO_OWNER || !REPO_NAME) return null;
     const url = `${GITHUB_API_URL}/repos/${REPO_OWNER}/${REPO_NAME}`;
 
     const response = await fetch(url, {
@@ -105,6 +106,7 @@ export async function getRepositoryStats() {
 
 export async function getLatestRelease() {
   try {
+    if (!REPO_OWNER || !REPO_NAME) return null;
     // Fetch the latest stable release
     const url = `${GITHUB_API_URL}/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest`;
     const response = await fetch(url, {

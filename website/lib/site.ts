@@ -8,27 +8,25 @@
  * Global site configuration object.
  * Contains metadata, external links, and author information used throughout the application.
  */
+const repository = process.env.NEXT_PUBLIC_GITHUB_REPOSITORY ?? "";
+const githubUrl = repository ? `https://github.com/${repository}` : "#";
+
 export const siteConfig = {
-  name: "mpvExtended",
-  version: "v1.2.7",
+  name: "mpvDanmaku",
+  version: "v0.1.0",
   description:
-    "Advanced mpv-based video player for Android with powerful features, seamless playback, and open-source freedom.",
-  url: "https://mpvex.vercel.app",
-  ogImage: "https://mpvex.vercel.app/og.jpg",
+    "Independent Android media player built on mpvEx with synchronized danmaku support.",
+  url: process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000",
+  ogImage: `${process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"}/og.jpg`,
   icons: {
     icon: "/icon.svg",
     apple: "/apple-icon.png",
   },
   links: {
-    github: "https://github.com/marlboro-advance/mpvEx",
-    releases: "https://github.com/marlboro-advance/mpvEx/releases",
-    latestRelease: "https://github.com/marlboro-advance/mpvEx/releases/latest",
-    izzyOnAndroid: "https://apt.izzysoft.de/packages/app.marlboroadvance.mpvex",
-    contributors: "https://github.com/marlboro-advance/mpvEx/graphs/contributors",
-  },
-  author: {
-    name: "marlboro-advance",
-    url: "https://github.com/marlboro-advance",
+    github: githubUrl,
+    releases: repository ? `${githubUrl}/releases` : "#",
+    latestRelease: repository ? `${githubUrl}/releases/latest` : "#",
+    contributors: repository ? `${githubUrl}/graphs/contributors` : "#",
   },
 } as const;
 

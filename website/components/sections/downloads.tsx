@@ -2,23 +2,12 @@
 
 import { motion } from "framer-motion";
 import { ArrowRight, FlaskConical, Github } from "lucide-react";
-import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { downloadOptions } from "@/lib/data";
 
 const iconMap: Record<string, React.ReactNode> = {
   github: <Github className="w-8 h-8 text-foreground" />,
   zap: <FlaskConical className="w-8 h-8 text-red-500" />,
-  download: (
-    <div className="relative w-32 h-12">
-      <Image
-        src="/izzy.svg"
-        alt="Get it at IzzyOnDroid"
-        fill
-        className="object-contain"
-      />
-    </div>
-  ),
 };
 
 export function DownloadsSection({ downloadUrl }: { downloadUrl?: string }) {
@@ -35,11 +24,11 @@ export function DownloadsSection({ downloadUrl }: { downloadUrl?: string }) {
           </span>
         </h2>
         <p className="text-lg text-muted-foreground text-center mb-20 max-w-2xl mx-auto">
-          Download mpvExtended from your preferred source and start experiencing
+          Download mpvDanmaku from your preferred source and start experiencing
           premium playback today.
         </p>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {downloadOptions.map((option) => (
             <motion.div
               key={option.id}

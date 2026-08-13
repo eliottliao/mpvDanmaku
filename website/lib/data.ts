@@ -108,15 +108,6 @@ export const downloadOptions = [
     icon: "zap",
     cta: "View Pre-releases",
   },
-  {
-    id: 3,
-    title: "IzzyOnAndroid",
-    description:
-      "Install and update automatically on the IzzyOnAndroid client.",
-    link: siteConfig.links.izzyOnAndroid,
-    icon: "download",
-    cta: "View Repository",
-  },
 ];
 
 export const stats = [

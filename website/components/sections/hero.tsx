@@ -91,7 +91,7 @@ export function HeroSection({
           className="text-5xl sm:text-7xl lg:text-8xl font-bold tracking-tight mb-6"
         >
           <span className="bg-clip-text text-transparent bg-linear-to-b from-foreground to-foreground/60">
-            mpvExtended
+            mpvDanmaku
           </span>
         </motion.h1>
 
@@ -99,8 +99,8 @@ export function HeroSection({
           variants={itemVariants}
           className="text-xl sm:text-2xl text-muted-foreground mb-10 max-w-2xl mx-auto leading-relaxed"
         >
-          An advanced video player for Android built on libmpv. Experience
-          Material3 design, background playback, and picture-in-picture.
+          An independent Android player built on mpvEx and libmpv, with
+          synchronized danmaku, background playback, and picture-in-picture.
         </motion.p>
 
         <motion.div
@@ -134,7 +134,7 @@ export function HeroSection({
        <motion.img
          variants={itemVariants}
          src="/player.png"
-         alt="MpvEx Player Image"
+         alt="mpvDanmaku player"
          className="mt-0 max-w-screen-md w-full mx-auto rounded-lg shadow-lg"
        >
      </motion.img>

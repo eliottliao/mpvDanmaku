@@ -8,6 +8,7 @@ import {
   type GitHubContributor,
   getRepositoryContributors,
 } from "@/lib/github";
+import { siteConfig } from "@/lib/site";
 
 export function ContributorsSection() {
   const [contributors, setContributors] = useState<GitHubContributor[]>([]);
@@ -32,7 +33,7 @@ export function ContributorsSection() {
             Contributors
           </h2>
           <p className="text-lg text-muted-foreground text-balance">
-            Amazing people making mpvExtended better every day
+            People making mpvDanmaku better every day
           </p>
         </div>
 
@@ -79,7 +80,7 @@ export function ContributorsSection() {
 
         <div className="text-center mt-12">
           <a
-            href="https://github.com/marlboro-advance/mpvEx/graphs/contributors"
+            href={siteConfig.links.contributors}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 px-6 py-3 bg-primary hover:bg-primary/90 text-primary-foreground rounded-full transition-all duration-300 hover:shadow-lg"
