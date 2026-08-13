@@ -157,7 +157,9 @@ class MainActivity : ComponentActivity() {
     val currentVersion = BuildConfig.VERSION_NAME.replace("-dev", "")
 
     // Conditionally initialize update feature based on build config
-    val updateViewModel: UpdateViewModel? = if (BuildConfig.ENABLE_UPDATE_FEATURE) {
+    val updateViewModel: UpdateViewModel? = if (
+      BuildConfig.ENABLE_UPDATE_FEATURE && BuildConfig.UPDATE_REPOSITORY.isNotBlank()
+    ) {
       viewModel(context as ComponentActivity)
     } else {
       null

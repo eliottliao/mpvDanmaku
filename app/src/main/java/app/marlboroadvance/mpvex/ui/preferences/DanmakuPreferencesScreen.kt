@@ -70,7 +70,7 @@ object DanmakuPreferencesScreen : Screen {
         title = { Text("Enable dandanplay danmaku?") },
         text = {
           Text(
-            "To identify the current episode, mpvExtended sends the file name without its path, " +
+            "To identify the current episode, mpvDanmaku sends the file name without its path, " +
               "the MD5 of the first 16 MiB, file size, and duration to the dandanplay open danmaku network. " +
               "Video contents, local paths, server credentials, and full stream URLs are not uploaded.",
           )

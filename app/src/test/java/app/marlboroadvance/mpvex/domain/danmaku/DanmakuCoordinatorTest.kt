@@ -18,7 +18,10 @@ import app.marlboroadvance.mpvex.testing.InMemoryPreferenceStore
 import app.marlboroadvance.mpvex.ui.player.danmaku.DanmakuUiStatus
 import java.io.File
 import java.nio.file.Files
+import java.util.concurrent.Executors
+import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -62,6 +65,37 @@ class DanmakuCoordinatorTest {
     durationSeconds = 60,
     suggestedMatchMode = DandanplayMatchMode.HASH_AND_FILE_NAME,
   )
+
+  private class GateDispatcher : CoroutineDispatcher(), AutoCloseable {
+    data class Gate(
+      val entered: CompletableDeferred<Unit> = CompletableDeferred(),
+      val release: CompletableDeferred<Unit> = CompletableDeferred(),
+      val completed: CompletableDeferred<Unit> = CompletableDeferred(),
+    )
+
+    private val executor = Executors.newSingleThreadExecutor()
+
+    @Volatile
+    private var nextGate: Gate? = null
+
+    fun gateNextDispatch(): Gate = Gate().also { nextGate = it }
+
+    override fun dispatch(context: CoroutineContext, block: Runnable) {
+      executor.execute {
+        nextGate?.also { gate ->
+          nextGate = null
+          gate.entered.complete(Unit)
+          runBlocking { gate.release.await() }
+          block.run()
+          gate.completed.complete(Unit)
+        } ?: block.run()
+      }
+    }
+
+    override fun close() {
+      executor.shutdownNow()
+    }
+  }
 
   @Test
   fun `missing credentials enter the error state without any request`() = runBlocking {
@@ -176,6 +210,120 @@ class DanmakuCoordinatorTest {
       }
     } finally {
       tempDir.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `multiple exact candidates require user selection`() {
+    val tempDir = Files.createTempDirectory("danmaku-coordinator-test").toFile()
+    try {
+      runBlocking {
+        val dao = FakeDanmakuDao()
+        val transport = FakeDandanplayTransport().apply {
+          matchResponse = DandanplayMatchResponseDto(
+            success = true,
+            isMatched = true,
+            matches = listOf(
+              DandanplayMatchResultDto(42L, 7L, "Test Anime", "EP01"),
+              DandanplayMatchResultDto(43L, 7L, "Test Anime", "EP02"),
+            ),
+          )
+        }
+        val repository = DandanplayRepository(
+          transport = transport,
+          commentCache = DanmakuCacheStore(RawCommentDiskCache(tempDir), dao),
+        )
+        val fingerprintProvider = mock<MediaFingerprintProvider>()
+        whenever(
+          fingerprintProvider.fingerprint(
+            uri = any<Uri>(),
+            fallbackFileName = anyOrNull<String>(),
+            durationSeconds = any<Double>(),
+            allowContentHash = any<Boolean>(),
+          ),
+        ).thenReturn(fingerprint("media-key", "Show"))
+        val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+        val coordinator = DanmakuCoordinator(
+          repository,
+          fingerprintProvider,
+          DanmakuBindingRepository(dao),
+          enabledPreferences(),
+          scope,
+        )
+
+        coordinator.openMedia(mock<Uri>(), "Show.mkv", 60.0)
+        val state = withTimeout(10_000) {
+          coordinator.state.first { it.status == DanmakuUiStatus.NoMatch }
+        }
+
+        assertEquals(listOf(42L, 43L), state.candidates.map { it.episodeId })
+        assertTrue(dao.bindings.isEmpty())
+        assertEquals(0, transport.commentsCalls.get())
+        scope.cancel()
+      }
+    } finally {
+      tempDir.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `clearing media cancels an in-flight item rebuild`() {
+    val tempDir = Files.createTempDirectory("danmaku-coordinator-test").toFile()
+    GateDispatcher().use { itemDispatcher ->
+      try {
+        runBlocking {
+          val dao = FakeDanmakuDao()
+          val transport = FakeDandanplayTransport().apply {
+            matchResponse = DandanplayMatchResponseDto(
+              success = true,
+              isMatched = true,
+              matches = listOf(DandanplayMatchResultDto(42L, 7L, "Test Anime", "EP01")),
+            )
+            commentsResponse = DandanplayCommentResponseDto(
+              count = 1,
+              comments = listOf(DandanplayCommentDto(101L, "5.0,1,16777215,1", "danmaku")),
+            )
+          }
+          val repository = DandanplayRepository(
+            transport = transport,
+            commentCache = DanmakuCacheStore(RawCommentDiskCache(tempDir), dao),
+          )
+          val fingerprintProvider = mock<MediaFingerprintProvider>()
+          whenever(
+            fingerprintProvider.fingerprint(
+              uri = any<Uri>(),
+              fallbackFileName = anyOrNull<String>(),
+              durationSeconds = any<Double>(),
+              allowContentHash = any<Boolean>(),
+            ),
+          ).thenReturn(fingerprint("media-key", "Show"))
+          val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+          val coordinator = DanmakuCoordinator(
+            repository,
+            fingerprintProvider,
+            DanmakuBindingRepository(dao),
+            enabledPreferences(),
+            scope,
+            itemDispatcher,
+          )
+
+          coordinator.openMedia(mock<Uri>(), "Show.mkv", 60.0)
+          withTimeout(10_000) { coordinator.state.first { it.status == DanmakuUiStatus.Ready } }
+          assertEquals(listOf(101L), coordinator.items.value.map { it.id })
+
+          val gate = itemDispatcher.gateNextDispatch()
+          coordinator.setOffset(5_000L)
+          withTimeout(10_000) { gate.entered.await() }
+          coordinator.clearMedia()
+          gate.release.complete(Unit)
+          withTimeout(10_000) { gate.completed.await() }
+
+          assertTrue(coordinator.items.value.isEmpty())
+          scope.cancel()
+        }
+      } finally {
+        tempDir.deleteRecursively()
+      }
     }
   }
 }

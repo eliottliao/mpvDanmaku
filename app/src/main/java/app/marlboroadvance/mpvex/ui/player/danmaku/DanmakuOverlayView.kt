@@ -55,7 +55,7 @@ class DanmakuOverlayView @JvmOverloads constructor(
 
   private var items: List<DanmakuItem> = emptyList()
   private var renderConfig = DanmakuRenderConfig()
-  private var positionMillisProvider: () -> Long = { lastKnownPositionMillis }
+  private var positionMillisProvider: () -> Long? = { lastKnownPositionMillis }
   private var isPlayingProvider: () -> Boolean = { false }
   private var lastKnownPositionMillis = 0L
   private var lastRenderedPositionMillis: Long? = null
@@ -109,9 +109,14 @@ class DanmakuOverlayView @JvmOverloads constructor(
     requestRender()
   }
 
-  /** Installs the mpv-backed media position and playback-state providers. */
+  /**
+   * Installs the mpv-backed media position and playback-state providers.
+   *
+   * The position provider may return null while the player has no usable time, e.g. across a file
+   * or track transition. Null keeps the last known position instead of being read as a seek.
+   */
   fun setClockProviders(
-    positionMillisProvider: () -> Long,
+    positionMillisProvider: () -> Long?,
     isPlayingProvider: () -> Boolean,
   ) {
     this.positionMillisProvider = positionMillisProvider
@@ -368,9 +373,14 @@ class DanmakuOverlayView @JvmOverloads constructor(
   private fun scheduleNextWake(positionMillis: Long) {
     if (delayedWakePosted || framePosted || !shouldAnimate()) return
     val nextTime = items.getOrNull(nextItemIndex)?.timeMillis
-    if (nextTime == null) return
-    val delay = (nextTime - positionMillis - WAKE_EARLY_MS)
-      .coerceIn(MIN_WAKE_DELAY_MS, MAX_WAKE_DELAY_MS)
+    // Past the last comment there is nothing to wait for, but the clock still has to be polled: the
+    // position provider is the only seek signal this view gets, so stopping here would leave the
+    // overlay blank for the rest of playback after a backward seek.
+    val delay = if (nextTime == null) {
+      MAX_WAKE_DELAY_MS
+    } else {
+      (nextTime - positionMillis - WAKE_EARLY_MS).coerceIn(MIN_WAKE_DELAY_MS, MAX_WAKE_DELAY_MS)
+    }
     delayedWakePosted = true
     postDelayed(delayedWake, delay)
   }
@@ -404,9 +414,9 @@ class DanmakuOverlayView @JvmOverloads constructor(
     windowVisibility == VISIBLE &&
     runCatching(isPlayingProvider).getOrDefault(false)
 
-  private fun readPositionMillis(): Long = runCatching(positionMillisProvider)
-    .getOrDefault(lastKnownPositionMillis)
-    .also { lastKnownPositionMillis = it }
+  private fun readPositionMillis(): Long =
+    (runCatching(positionMillisProvider).getOrNull() ?: lastKnownPositionMillis)
+      .also { lastKnownPositionMillis = it }
 
   private fun resetTimeline(clearMeasurements: Boolean) {
     timelineInitialized = false

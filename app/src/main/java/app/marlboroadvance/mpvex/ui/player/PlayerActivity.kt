@@ -503,7 +503,9 @@ class PlayerActivity :
   private fun setupDanmakuOverlay() {
     binding.danmakuOverlay.setClockProviders(
       positionMillisProvider = {
-        ((MPVLib.getPropertyDouble("time-pos") ?: 0.0) * 1000).toLong()
+        // Null while mpv has no usable time (file/track transition). Reporting 0 here would look
+        // like a seek to the start and rebuild the overlay timeline from the episode beginning.
+        MPVLib.getPropertyDouble("time-pos")?.let { (it * 1000).toLong() }
       },
       isPlayingProvider = {
         MPVLib.getPropertyBoolean("pause") != true
@@ -1485,6 +1487,7 @@ class PlayerActivity :
     when (property) {
       "pause" -> {
         handlePauseStateChange(value)
+        binding.danmakuOverlay.notifyPlaybackStateChanged()
         // Ensure isReady is set when playback starts
         if (!value && !isReady) {
           isReady = true

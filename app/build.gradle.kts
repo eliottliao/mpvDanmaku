@@ -1,4 +1,5 @@
 import com.android.build.api.variant.FilterConfiguration
+import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -14,13 +15,11 @@ android {
   compileSdk = 36
 
   defaultConfig {
-    applicationId = "app.marlboroadvance.mpvex"
+    applicationId = "app.mpvdanmaku"
     minSdk = 26
     targetSdk = 36
-    versionCode = 129
-    versionName = "1.2.9"
-    testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-
+    versionCode = 1
+    versionName = "0.1.0"
     vectorDrawables {
       useSupportLibrary = true
     }
@@ -36,6 +35,15 @@ android {
       "String",
       "DANDANPLAY_APP_SECRET",
       buildConfigString(secretValue("DANDANPLAY_APP_SECRET")),
+    )
+    buildConfigField(
+      "String",
+      "UPDATE_REPOSITORY",
+      buildConfigString(
+        configurationValue("MPVDANMAKU_UPDATE_REPOSITORY")
+          ?: System.getenv("GITHUB_REPOSITORY")
+          ?: "",
+      ),
     )
   }
 
@@ -143,12 +151,6 @@ android {
     }
   }
 
-  sourceSets {
-    getByName("androidTest") {
-      // Expose the exported Room schemas to MigrationTestHelper.
-      assets.srcDir("$projectDir/schemas")
-    }
-  }
 }
 
 androidComponents {
@@ -253,11 +255,6 @@ dependencies {
   testImplementation(libs.mockito.core)
   testImplementation(libs.mockito.kotlin)
 
-  // Instrumented test dependencies
-  androidTestImplementation(libs.room.testing)
-  androidTestImplementation(libs.androidx.test.core)
-  androidTestImplementation(libs.androidx.test.runner)
-  androidTestImplementation(libs.androidx.test.ext.junit)
 }
 
 /* ---------------- Git helpers ---------------- */
@@ -287,9 +284,22 @@ fun runCommand(command: String): String? =
   }
 
 fun secretValue(name: String): String =
+  configurationValue(name)
+    ?: ""
+
+fun configurationValue(name: String): String? =
   providers.gradleProperty(name).orNull
     ?: System.getenv(name)
-    ?: ""
+    ?: localPropertiesValue(name)
+
+fun localPropertiesValue(name: String): String? {
+  val localPropertiesFile = rootProject.file("local.properties")
+  if (!localPropertiesFile.isFile) return null
+
+  return Properties().apply {
+    localPropertiesFile.inputStream().use(::load)
+  }.getProperty(name)
+}
 
 fun buildConfigString(value: String): String =
   "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""

@@ -30,7 +30,7 @@ import app.marlboroadvance.mpvex.domain.network.NetworkConnection
     DanmakuMediaBindingEntity::class,
     DanmakuCacheEntity::class,
   ],
-  version = 9,
+  version = 1,
   exportSchema = true,
 )
 @TypeConverters(NetworkProtocolConverter::class)

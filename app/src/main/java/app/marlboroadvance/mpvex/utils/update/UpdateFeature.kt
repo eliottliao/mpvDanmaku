@@ -53,6 +53,8 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
 
+private const val UPDATE_PREFERENCES = "mpvDanmaku_update_prefs"
+
 // --- Data Models ---
 
 @Serializable
@@ -86,10 +88,13 @@ class UpdateManager(
             return null
         }
         
-        val release = getLatestRelease("https://api.github.com/repos/marlboro-advance/mpvEx/releases/latest")
+        val repository = BuildConfig.UPDATE_REPOSITORY.trim()
+        if (repository.isEmpty()) return null
+
+        val release = getLatestRelease("https://api.github.com/repos/$repository/releases/latest")
         val currentVersion = BuildConfig.VERSION_NAME.replace("-dev", "")
         val remoteVersion = release.tagName.removePrefix("v")
-        val prefs = context.getSharedPreferences("mpvEx_prefs", Context.MODE_PRIVATE)
+        val prefs = context.getSharedPreferences(UPDATE_PREFERENCES, Context.MODE_PRIVATE)
         val ignoredVersion = prefs.getString("ignored_version", null)
 
         // If this version was ignored, don't show it unless forced (manual check)
@@ -110,7 +115,7 @@ class UpdateManager(
             return
         }
         
-        val prefs = context.getSharedPreferences("mpvEx_prefs", Context.MODE_PRIVATE)
+        val prefs = context.getSharedPreferences(UPDATE_PREFERENCES, Context.MODE_PRIVATE)
         prefs.edit()
             .putString("ignored_version", version)
             .apply()
@@ -266,7 +271,7 @@ class UpdateViewModel(application: Application) : AndroidViewModel(application) 
     private val _isDownloading = MutableStateFlow(false)
     val isDownloading: StateFlow<Boolean> = _isDownloading.asStateFlow()
 
-    private val prefs = application.getSharedPreferences("mpvEx_prefs", Context.MODE_PRIVATE)
+    private val prefs = application.getSharedPreferences(UPDATE_PREFERENCES, Context.MODE_PRIVATE)
     private val _isAutoUpdateEnabled = MutableStateFlow(
         if (BuildConfig.ENABLE_UPDATE_FEATURE) prefs.getBoolean("auto_update", false) else false
     )

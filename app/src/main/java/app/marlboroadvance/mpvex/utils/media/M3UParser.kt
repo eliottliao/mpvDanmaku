@@ -3,6 +3,7 @@ package app.marlboroadvance.mpvex.utils.media
 import android.content.Context
 import android.net.Uri
 import android.util.Log
+import app.marlboroadvance.mpvex.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
@@ -49,7 +50,7 @@ object M3UParser {
       connection.connectTimeout = TIMEOUT_MS
       connection.readTimeout = TIMEOUT_MS
       connection.requestMethod = "GET"
-      connection.setRequestProperty("User-Agent", "mpvEx/1.0")
+      connection.setRequestProperty("User-Agent", "mpvDanmaku/${BuildConfig.VERSION_NAME}")
       
       val responseCode = connection.responseCode
       if (responseCode != HttpURLConnection.HTTP_OK) {

@@ -156,12 +156,12 @@ fun PermissionDeniedState(
             Text(
               text = if (isPlayStoreBuild) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                  "mpvEx requires \"Photos and videos\" permission to access and play your video files stored on your device."
+                  "mpvDanmaku requires \"Photos and videos\" permission to access and play your video files stored on your device."
                 } else {
-                  "mpvEx requires \"Storage\" permission to access and play your media files stored on your device."
+                  "mpvDanmaku requires \"Storage\" permission to access and play your media files stored on your device."
                 }
               } else {
-                "mpvEx requires \"All file access\" permission to discover media and subtitles on your device due to a change in security policy in Android 11 and later versions."
+                "mpvDanmaku requires \"All file access\" permission to discover media and subtitles on your device due to a change in security policy in Android 11 and later versions."
               },
               style = MaterialTheme.typography.bodyLarge,
               color = MaterialTheme.colorScheme.onSurface,
@@ -236,7 +236,9 @@ fun PermissionDeniedState(
   // Explanation Dialog
   if (showExplanationDialog) {
     val uriHandler = LocalUriHandler.current
-    val githubUrl = "https://github.com/marlboro-advance/mpvex"
+    val githubUrl = BuildConfig.UPDATE_REPOSITORY
+      .takeIf { it.isNotBlank() }
+      ?.let { "https://github.com/$it" }
 
     AlertDialog(
       onDismissRequest = { showExplanationDialog = false },
@@ -265,7 +267,7 @@ fun PermissionDeniedState(
           if (isPlayStoreBuild) {
             // Play Store build explanation
             Text(
-              text = "mpvEx needs access to your video files to provide its core functionality as a media player.",
+              text = "mpvDanmaku needs access to your video files to provide its core functionality as a media player.",
               style = MaterialTheme.typography.bodyMedium,
               color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -295,7 +297,7 @@ fun PermissionDeniedState(
           } else {
             // Standard build explanation
             Text(
-              text = "mpvEx has always required storage access permission as it's essential for the app to find all media and subtitle files on your device, including the ones that are not supported by the system.",
+              text = "mpvDanmaku requires storage access permission because it is essential for finding media and subtitle files on your device, including files not supported by the system.",
               style = MaterialTheme.typography.bodyMedium,
               color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -313,47 +315,40 @@ fun PermissionDeniedState(
             )
           }
 
-          Text(
-            text = "mpvEx is an open source project. You can review the source code and verify how permissions are used by visiting our GitHub repository at:",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-          )
+          if (githubUrl != null) {
+            Text(
+              text = "mpvDanmaku is open source. You can review how permissions are used in the project repository:",
+              style = MaterialTheme.typography.bodyMedium,
+              color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
 
-          // Clickable GitHub link
-          val annotatedString =
-            buildAnnotatedString {
-              pushStringAnnotation(
-                tag = "URL",
-                annotation = githubUrl,
-              )
-              withStyle(
-                style =
-                  SpanStyle(
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Medium,
-                    textDecoration = TextDecoration.Underline,
-                  ),
-              ) {
-                append(githubUrl)
-              }
-              pop()
-            }
-
-          ClickableText(
-            text = annotatedString,
-            style = MaterialTheme.typography.bodyMedium,
-            onClick = { offset ->
-              annotatedString
-                .getStringAnnotations(
-                  tag = "URL",
-                  start = offset,
-                  end = offset,
-                ).firstOrNull()
-                ?.let {
-                  uriHandler.openUri(it.item)
+            val annotatedString =
+              buildAnnotatedString {
+                pushStringAnnotation(tag = "URL", annotation = githubUrl)
+                withStyle(
+                  style =
+                    SpanStyle(
+                      color = MaterialTheme.colorScheme.primary,
+                      fontWeight = FontWeight.Medium,
+                      textDecoration = TextDecoration.Underline,
+                    ),
+                ) {
+                  append(githubUrl)
                 }
-            },
-          )
+                pop()
+              }
+
+            ClickableText(
+              text = annotatedString,
+              style = MaterialTheme.typography.bodyMedium,
+              onClick = { offset ->
+                annotatedString
+                  .getStringAnnotations(tag = "URL", start = offset, end = offset)
+                  .firstOrNull()
+                  ?.let { uriHandler.openUri(it.item) }
+              },
+            )
+          }
 
           Text(
             text = "Be rest assured, your privacy is our utmost priority, and we neither access your files for other purposes nor transfer or store them to our servers. They remain safe on your device.",

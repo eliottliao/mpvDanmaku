@@ -82,7 +82,9 @@ object AboutScreen : Screen {
     val buildType = BuildConfig.BUILD_TYPE
 
     // Conditionally initialize update feature based on build config
-    val updateViewModel: UpdateViewModel? = if (BuildConfig.ENABLE_UPDATE_FEATURE) {
+    val updateViewModel: UpdateViewModel? = if (
+      BuildConfig.ENABLE_UPDATE_FEATURE && BuildConfig.UPDATE_REPOSITORY.isNotBlank()
+    ) {
       viewModel(context as androidx.activity.ComponentActivity)
     } else {
       null
@@ -186,7 +188,7 @@ object AboutScreen : Screen {
 
                 Column(modifier = Modifier.weight(1f)) {
                   Text(
-                    text = "mpvExtended",
+                    text = "mpvDanmaku",
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
                     color = cs.onPrimaryContainer,
@@ -228,31 +230,33 @@ object AboutScreen : Screen {
                   )
                 }
 
-                Button(
-                  onClick = {
-                    context.startActivity(
-                      Intent(
-                        Intent.ACTION_VIEW,
-                        context.getString(R.string.github_repo_url).toUri(),
+                if (BuildConfig.UPDATE_REPOSITORY.isNotBlank()) {
+                  Button(
+                    onClick = {
+                      context.startActivity(
+                        Intent(
+                          Intent.ACTION_VIEW,
+                          "https://github.com/${BuildConfig.UPDATE_REPOSITORY}".toUri(),
+                        ),
+                      )
+                    },
+                    modifier =
+                      Modifier
+                        .weight(1f)
+                        .height(56.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors =
+                      ButtonDefaults.buttonColors(
+                        containerColor = btnContainer,
+                        contentColor = btnContent,
                       ),
+                  ) {
+                    Text(
+                      text = "GitHub",
+                      style = MaterialTheme.typography.titleMedium,
+                      fontWeight = FontWeight.SemiBold,
                     )
-                  },
-                  modifier =
-                    Modifier
-                      .weight(1f)
-                      .height(56.dp),
-                  shape = RoundedCornerShape(16.dp),
-                  colors =
-                    ButtonDefaults.buttonColors(
-                      containerColor = btnContainer,
-                      contentColor = btnContent,
-                    ),
-                ) {
-                  Text(
-                    text = "GitHub",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                  )
+                  }
                 }
               }
 

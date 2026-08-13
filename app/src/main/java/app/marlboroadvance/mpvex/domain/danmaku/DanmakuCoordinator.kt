@@ -25,6 +25,7 @@ import app.marlboroadvance.mpvex.utils.media.MediaInfoParser
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -45,6 +46,7 @@ class DanmakuCoordinator(
   private val bindingRepository: DanmakuBindingRepository,
   private val preferences: DanmakuPreferences,
   private val scope: CoroutineScope,
+  private val itemDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : AutoCloseable {
   private data class ActiveMedia(
     val uri: Uri,
@@ -71,7 +73,9 @@ class DanmakuCoordinator(
   val renderConfig: StateFlow<DanmakuRenderConfig> = _renderConfig.asStateFlow()
 
   private val generation = AtomicLong(0L)
+  private val itemGeneration = AtomicLong(0L)
   private var sessionJob: Job? = null
+  private var rebuildJob: Job? = null
   private var activeMedia: ActiveMedia? = null
   private var fingerprint: MediaFingerprint? = null
   private var selection: Selection? = null
@@ -302,7 +306,7 @@ class DanmakuCoordinator(
   fun setOffset(offsetMillis: Long) {
     val clamped = offsetMillis.coerceIn(-600_000L, 600_000L)
     _state.update { it.copy(offsetMillis = clamped) }
-    scope.launch { rebuildItems() }
+    launchItemRebuild()
     val mediaKey = fingerprint?.mediaKey ?: return
     scope.launch { bindingRepository.updateOffset(mediaKey, clamped / 1_000.0) }
   }
@@ -325,7 +329,7 @@ class DanmakuCoordinator(
     val clamped = value.coerceIn(0.05f, 1f)
     preferences.density.set(clamped)
     _state.update { it.copy(density = clamped) }
-    scope.launch { rebuildItems() }
+    launchItemRebuild()
     updateRenderConfig()
   }
 
@@ -346,6 +350,7 @@ class DanmakuCoordinator(
     generation.incrementAndGet()
     sessionJob?.cancel()
     sessionJob = null
+    cancelItemRebuild()
     _items.value = emptyList()
     _state.value = initialState()
     updateRenderConfig()
@@ -378,7 +383,7 @@ class DanmakuCoordinator(
     val candidates = result.candidates.map { candidate ->
       candidate.toUiCandidate(confidence = if (result.isMatched) 1f else null)
     }
-    if (result.isMatched && result.candidates.isNotEmpty()) {
+    if (result.isMatched && result.candidates.size == 1) {
       persistAndLoad(api, computed, selections.getValue(result.candidates.first().episodeId), false, token)
     } else {
       _state.update {
@@ -444,7 +449,8 @@ class DanmakuCoordinator(
     )
     ensureCurrent(token)
     rawComments = result.comments
-    rebuildItems()
+    rebuildItems(token)
+    ensureCurrent(token)
     _state.update {
       it.copy(
         status = if (result.source == DandanplayCommentSource.CACHE && result.isStale) {
@@ -460,7 +466,19 @@ class DanmakuCoordinator(
     }
   }
 
-  private suspend fun rebuildItems() {
+  private fun launchItemRebuild() {
+    val sessionToken = generation.get()
+    val rebuildToken = itemGeneration.incrementAndGet()
+    rebuildJob?.cancel()
+    rebuildJob = scope.launch {
+      rebuildItems(sessionToken, rebuildToken)
+    }
+  }
+
+  private suspend fun rebuildItems(
+    sessionToken: Long,
+    rebuildToken: Long = itemGeneration.incrementAndGet(),
+  ) {
     val selected = selection ?: run {
       _items.value = emptyList()
       return
@@ -469,7 +487,7 @@ class DanmakuCoordinator(
     val density = _state.value.density.coerceIn(0.05f, 1f)
     val blocked = keywordFilters()
     val comments = rawComments
-    val rebuilt = withContext(Dispatchers.Default) {
+    val rebuilt = withContext(itemDispatcher) {
       comments.asSequence()
         .filter { density >= 1f || stableSample(it.id) < density }
         .filterNot { comment -> blocked.any { it.matches(comment.text) } }
@@ -492,7 +510,15 @@ class DanmakuCoordinator(
         .sortedWith(compareBy<DanmakuItem> { it.timeMillis }.thenBy { it.id })
         .toList()
     }
+    currentCoroutineContext().ensureActive()
+    if (generation.get() != sessionToken || itemGeneration.get() != rebuildToken) return
     _items.value = rebuilt
+  }
+
+  private fun cancelItemRebuild() {
+    itemGeneration.incrementAndGet()
+    rebuildJob?.cancel()
+    rebuildJob = null
   }
 
   private fun keywordFilters(): List<KeywordFilter> {
@@ -531,6 +557,7 @@ class DanmakuCoordinator(
   private fun launchSession(block: suspend (Long) -> Unit) {
     val token = generation.incrementAndGet()
     sessionJob?.cancel()
+    cancelItemRebuild()
     sessionJob = scope.launch {
       try {
         block(token)
@@ -571,6 +598,7 @@ class DanmakuCoordinator(
     generation.incrementAndGet()
     sessionJob?.cancel()
     sessionJob = null
+    cancelItemRebuild()
     _items.value = emptyList()
     rawComments = emptyList()
     _state.update {

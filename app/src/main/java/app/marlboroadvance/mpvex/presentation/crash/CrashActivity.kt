@@ -59,6 +59,7 @@ import androidx.lifecycle.coroutineScope
 import app.marlboroadvance.mpvex.BuildConfig
 import app.marlboroadvance.mpvex.MainActivity
 import app.marlboroadvance.mpvex.R
+import app.marlboroadvance.mpvex.di.DATABASE_NAME
 import app.marlboroadvance.mpvex.preferences.AppearancePreferences
 import app.marlboroadvance.mpvex.preferences.preference.collectAsState
 import app.marlboroadvance.mpvex.ui.theme.DarkMode
@@ -110,9 +111,9 @@ class CrashActivity : ComponentActivity() {
 
   private fun deleteDatabase(): Boolean =
     try {
-      val dbFile = getDatabasePath("mpvex.db")
-      val dbWalFile = File(dbFile.parent, "mpvex.db-wal")
-      val dbShmFile = File(dbFile.parent, "mpvex.db-shm")
+      val dbFile = getDatabasePath(DATABASE_NAME)
+      val dbWalFile = File(dbFile.parent, "$DATABASE_NAME-wal")
+      val dbShmFile = File(dbFile.parent, "$DATABASE_NAME-shm")
 
       var deleted = false
       if (dbFile.exists()) {
@@ -138,7 +139,7 @@ class CrashActivity : ComponentActivity() {
         "database",
         "sqlite",
         "room",
-        "mpvex.db",
+        DATABASE_NAME,
         "mpvexDatabase",
         "android.database",
         "androidx.room",

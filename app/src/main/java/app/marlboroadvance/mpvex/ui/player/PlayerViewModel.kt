@@ -191,19 +191,14 @@ class PlayerViewModel(
   private val volumeBoostCap by MPVLib.propInt["volume-max"].collectAsState(viewModelScope)
 
   init {
-    // Poll precise position only when playing
+    // Poll precise position; while paused it only changes on seek, so poll lazily
     viewModelScope.launch {
       while (isActive) {
-        if (paused != true) {
-          val time = MPVLib.getPropertyDouble("time-pos")
-          if (time != null) {
-            _precisePosition.value = time.toFloat()
-          }
-          delay(42) // ~24fps updates
-        } else {
-          // Paused: position cannot change, poll lazily until playback resumes
-          delay(100)
+        val time = MPVLib.getPropertyDouble("time-pos")
+        if (time != null) {
+          _precisePosition.value = time.toFloat()
         }
+        delay(if (paused != true) 42 else 100) // ~24fps while playing
       }
     }
 
