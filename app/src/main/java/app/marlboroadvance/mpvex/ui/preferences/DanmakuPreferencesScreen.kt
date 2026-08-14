@@ -1,20 +1,15 @@
 package app.marlboroadvance.mpvex.ui.preferences
 
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -26,7 +21,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.marlboroadvance.mpvex.preferences.DanmakuChineseConversion
@@ -34,6 +28,7 @@ import app.marlboroadvance.mpvex.preferences.DanmakuPreferences
 import app.marlboroadvance.mpvex.preferences.preference.collectAsState
 import app.marlboroadvance.mpvex.presentation.Screen
 import app.marlboroadvance.mpvex.repository.dandanplay.DanmakuCacheStore
+import app.marlboroadvance.mpvex.ui.player.danmaku.DanmakuBlockedKeywordsDialog
 import app.marlboroadvance.mpvex.ui.utils.LocalBackStack
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
@@ -127,63 +122,17 @@ object DanmakuPreferencesScreen : Screen {
     }
 
     if (showKeywordEditor) {
-      var newKeyword by remember { mutableStateOf("") }
-      val trimmedKeyword = newKeyword.trim()
-      val invalidRegex = regexEnabled && trimmedKeyword.isNotEmpty() &&
-        runCatching { Regex(trimmedKeyword) }.isFailure
-      AlertDialog(
+      DanmakuBlockedKeywordsDialog(
+        blockedKeywords = blockedKeywords,
+        keywordRegexEnabled = regexEnabled,
+        onAddKeyword = { keyword ->
+          preferences.blockedKeywords.set(blockedKeywords + keyword)
+        },
+        onRemoveKeyword = { keyword ->
+          preferences.blockedKeywords.set(blockedKeywords - keyword)
+        },
+        onKeywordRegexEnabledChange = preferences.keywordRegexEnabled::set,
         onDismissRequest = { showKeywordEditor = false },
-        title = { Text("Blocked keywords") },
-        text = {
-          Column {
-            blockedKeywords.sorted().forEach { keyword ->
-              Row(
-                modifier = Modifier.padding(vertical = 2.dp),
-                verticalAlignment = Alignment.CenterVertically,
-              ) {
-                Text(
-                  text = keyword,
-                  modifier = Modifier.weight(1f),
-                  style = MaterialTheme.typography.bodyMedium,
-                )
-                IconButton(
-                  onClick = { preferences.blockedKeywords.set(blockedKeywords - keyword) },
-                ) {
-                  Icon(
-                    Icons.Outlined.Delete,
-                    contentDescription = "Remove keyword",
-                    tint = MaterialTheme.colorScheme.error,
-                  )
-                }
-              }
-            }
-            OutlinedTextField(
-              value = newKeyword,
-              onValueChange = { newKeyword = it },
-              label = { Text(if (regexEnabled) "New keyword or pattern" else "New keyword") },
-              singleLine = true,
-              isError = invalidRegex,
-              supportingText = if (invalidRegex) {
-                { Text("Invalid regular expression") }
-              } else {
-                null
-              },
-              modifier = Modifier.fillMaxWidth(),
-            )
-          }
-        },
-        confirmButton = {
-          TextButton(
-            enabled = trimmedKeyword.isNotEmpty() && !invalidRegex,
-            onClick = {
-              preferences.blockedKeywords.set(blockedKeywords + trimmedKeyword)
-              newKeyword = ""
-            },
-          ) { Text("Add") }
-        },
-        dismissButton = {
-          TextButton(onClick = { showKeywordEditor = false }) { Text("Close") }
-        },
       )
     }
 

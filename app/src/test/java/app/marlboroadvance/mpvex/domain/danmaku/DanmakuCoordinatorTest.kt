@@ -326,4 +326,125 @@ class DanmakuCoordinatorTest {
       }
     }
   }
+
+  @Test
+  fun `comments matching blocked words are filtered during loading`() = runBlocking {
+    val tempDir = Files.createTempDirectory("danmaku-filter-load-test").toFile()
+    try {
+      val dao = FakeDanmakuDao()
+      val transport = FakeDandanplayTransport().apply {
+        matchResponse = DandanplayMatchResponseDto(
+          success = true,
+          isMatched = true,
+          matches = listOf(DandanplayMatchResultDto(42L, 7L, "Test Anime", "EP01")),
+        )
+        commentsResponse = DandanplayCommentResponseDto(
+          count = 2,
+          comments = listOf(
+            DandanplayCommentDto(101L, "5.0,1,16777215,1", "A SPOILER appears"),
+            DandanplayCommentDto(102L, "6.0,1,16777215,1", "safe comment"),
+          ),
+        )
+      }
+      val repository = DandanplayRepository(
+        transport = transport,
+        commentCache = DanmakuCacheStore(RawCommentDiskCache(tempDir), dao),
+      )
+      val fingerprintProvider = mock<MediaFingerprintProvider>()
+      whenever(
+        fingerprintProvider.fingerprint(
+          uri = any<Uri>(),
+          fallbackFileName = anyOrNull<String>(),
+          durationSeconds = any<Double>(),
+          allowContentHash = any<Boolean>(),
+        ),
+      ).thenReturn(fingerprint("filter-load", "Show"))
+      val preferences = enabledPreferences().apply {
+        blockedKeywords.set(setOf("spoiler"))
+      }
+      val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+      val coordinator = DanmakuCoordinator(
+        repository,
+        fingerprintProvider,
+        DanmakuBindingRepository(dao),
+        preferences,
+        scope,
+      )
+
+      coordinator.openMedia(mock<Uri>(), "Show.mkv", 60.0)
+      withTimeout(10_000) { coordinator.state.first { it.status == DanmakuUiStatus.Ready } }
+
+      assertEquals(listOf(102L), coordinator.items.value.map { it.id })
+      assertEquals(setOf("spoiler"), coordinator.state.value.blockedKeywords)
+      scope.cancel()
+    } finally {
+      tempDir.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `blocked word and regex preference changes refilter loaded comments without fetching`() = runBlocking {
+    val tempDir = Files.createTempDirectory("danmaku-filter-reactive-test").toFile()
+    try {
+      val dao = FakeDanmakuDao()
+      val transport = FakeDandanplayTransport().apply {
+        matchResponse = DandanplayMatchResponseDto(
+          success = true,
+          isMatched = true,
+          matches = listOf(DandanplayMatchResultDto(42L, 7L, "Test Anime", "EP01")),
+        )
+        commentsResponse = DandanplayCommentResponseDto(
+          count = 2,
+          comments = listOf(
+            DandanplayCommentDto(101L, "5.0,1,16777215,1", "spoiler99"),
+            DandanplayCommentDto(102L, "6.0,1,16777215,1", "safe comment"),
+          ),
+        )
+      }
+      val repository = DandanplayRepository(
+        transport = transport,
+        commentCache = DanmakuCacheStore(RawCommentDiskCache(tempDir), dao),
+      )
+      val fingerprintProvider = mock<MediaFingerprintProvider>()
+      whenever(
+        fingerprintProvider.fingerprint(
+          uri = any<Uri>(),
+          fallbackFileName = anyOrNull<String>(),
+          durationSeconds = any<Double>(),
+          allowContentHash = any<Boolean>(),
+        ),
+      ).thenReturn(fingerprint("filter-reactive", "Show"))
+      val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+      val coordinator = DanmakuCoordinator(
+        repository,
+        fingerprintProvider,
+        DanmakuBindingRepository(dao),
+        enabledPreferences(),
+        scope,
+      )
+
+      coordinator.openMedia(mock<Uri>(), "Show.mkv", 60.0)
+      withTimeout(10_000) { coordinator.state.first { it.status == DanmakuUiStatus.Ready } }
+      assertEquals(listOf(101L, 102L), coordinator.items.value.map { it.id })
+
+      coordinator.addBlockedKeyword("spoiler")
+      withTimeout(10_000) { coordinator.items.first { it.map { item -> item.id } == listOf(102L) } }
+
+      coordinator.removeBlockedKeyword("spoiler")
+      withTimeout(10_000) { coordinator.items.first { it.size == 2 } }
+
+      coordinator.addBlockedKeyword("^spoiler\\d+$")
+      withTimeout(10_000) {
+        coordinator.state.first { "^spoiler\\d+$" in it.blockedKeywords }
+      }
+      coordinator.setKeywordRegexEnabled(true)
+      withTimeout(10_000) { coordinator.items.first { it.map { item -> item.id } == listOf(102L) } }
+
+      assertTrue(coordinator.state.value.keywordRegexEnabled)
+      assertEquals(1, transport.commentsCalls.get())
+      scope.cancel()
+    } finally {
+      tempDir.deleteRecursively()
+    }
+  }
 }

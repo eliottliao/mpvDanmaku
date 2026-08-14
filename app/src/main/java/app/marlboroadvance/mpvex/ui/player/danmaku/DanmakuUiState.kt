@@ -49,4 +49,6 @@ data class DanmakuUiState(
   val speed: Float = 1f,
   val density: Float = 1f,
   val displayArea: Float = 0.75f,
+  val blockedKeywords: Set<String> = emptySet(),
+  val keywordRegexEnabled: Boolean = false,
 )

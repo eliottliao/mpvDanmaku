@@ -4,6 +4,7 @@
   <string name="generic_share">Share</string>
   <string name="generic_confirm">Confirm</string>
   <string name="generic_cancel">Cancel</string>
+  <string name="generic_close">Close</string>
   <string name="generic_ok">OK</string>
   <string name="generic_unit_ms">ms</string>
   <string name="generic_disabled">Disabled</string>
@@ -34,6 +35,10 @@
   <string name="player_danmaku_font_size_value">%1$d sp</string>
   <string name="player_danmaku_density">Density</string>
   <string name="player_danmaku_display_area">Display area</string>
+  <string name="player_danmaku_filter">Filter and blocked words</string>
+  <string name="player_danmaku_filter_summary">Hide comments that match your blocked words</string>
+  <string name="player_danmaku_edit_blocked_words">Edit blocked words</string>
+  <string name="player_danmaku_blocked_count">%1$d blocked</string>
   <string name="player_danmaku_status_disabled">Danmaku is off</string>
   <string name="player_danmaku_status_idle">Ready to match this video</string>
   <string name="player_danmaku_status_matching">Matching this video…</string>
@@ -42,6 +47,17 @@
   <string name="player_danmaku_status_no_match">No episode match found</string>
   <string name="player_danmaku_status_offline_cache">Showing saved comments offline</string>
   <string name="player_danmaku_status_error">Couldn’t load comments</string>
+  <string name="danmaku_blocked_words">Blocked words</string>
+  <string name="danmaku_blocked_dialog_description">Plain entries match anywhere in a comment. Use /pattern/ or regex:pattern for individual regular expressions.</string>
+  <string name="danmaku_regex_enabled">Regular expression mode</string>
+  <string name="danmaku_regex_enabled_summary">Treat every blocked word as a regular expression</string>
+  <string name="danmaku_blocked_empty">No blocked words added.</string>
+  <string name="danmaku_new_blocked_word">New blocked word</string>
+  <string name="danmaku_new_pattern">New regular expression</string>
+  <string name="danmaku_invalid_regex">Invalid regular expression</string>
+  <string name="danmaku_duplicate_blocked_word">This blocked word already exists</string>
+  <string name="danmaku_add_blocked_word">Add blocked word</string>
+  <string name="danmaku_remove_blocked_word">Remove %1$s</string>
   <string name="pref_preferences">Preferences</string>
   <string name="pref_appearance_title">Appearance</string>
   <string name="pref_appearance_summary">Dark mode, Material You</string>

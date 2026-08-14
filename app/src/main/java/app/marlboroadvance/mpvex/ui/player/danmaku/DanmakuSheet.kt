@@ -21,6 +21,7 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Search
@@ -38,6 +39,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -77,9 +82,24 @@ fun DanmakuSheet(
   onFontSizeChange: (Float) -> Unit,
   onDensityChange: (Float) -> Unit,
   onDisplayAreaChange: (Float) -> Unit,
+  onBlockedKeywordAdd: (String) -> Unit,
+  onBlockedKeywordRemove: (String) -> Unit,
+  onKeywordRegexEnabledChange: (Boolean) -> Unit,
   onDismissRequest: () -> Unit,
   modifier: Modifier = Modifier,
 ) {
+  var showBlockedKeywords by remember { mutableStateOf(false) }
+  if (showBlockedKeywords) {
+    DanmakuBlockedKeywordsDialog(
+      blockedKeywords = state.blockedKeywords,
+      keywordRegexEnabled = state.keywordRegexEnabled,
+      onAddKeyword = onBlockedKeywordAdd,
+      onRemoveKeyword = onBlockedKeywordRemove,
+      onKeywordRegexEnabledChange = onKeywordRegexEnabledChange,
+      onDismissRequest = { showBlockedKeywords = false },
+    )
+  }
+
   PlayerSheet(
     onDismissRequest = onDismissRequest,
     modifier = modifier,
@@ -130,6 +150,7 @@ fun DanmakuSheet(
                 onFontSizeChange = onFontSizeChange,
                 onDensityChange = onDensityChange,
                 onDisplayAreaChange = onDisplayAreaChange,
+                onEditBlockedKeywords = { showBlockedKeywords = true },
               )
             }
           }
@@ -153,6 +174,7 @@ fun DanmakuSheet(
               onFontSizeChange = onFontSizeChange,
               onDensityChange = onDensityChange,
               onDisplayAreaChange = onDisplayAreaChange,
+              onEditBlockedKeywords = { showBlockedKeywords = true },
             )
           }
         }
@@ -278,6 +300,7 @@ private fun DanmakuDisplayColumn(
   onFontSizeChange: (Float) -> Unit,
   onDensityChange: (Float) -> Unit,
   onDisplayAreaChange: (Float) -> Unit,
+  onEditBlockedKeywords: () -> Unit,
 ) {
   SectionCard(title = stringResource(R.string.player_danmaku_timing)) {
     SliderControl(
@@ -344,6 +367,28 @@ private fun DanmakuDisplayColumn(
       steps = 14,
       enabled = state.enabled,
     )
+  }
+
+  SectionCard(title = stringResource(R.string.player_danmaku_filter)) {
+    Text(
+      text = stringResource(R.string.player_danmaku_filter_summary),
+      style = MaterialTheme.typography.bodySmall,
+      color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    FilledTonalButton(
+      onClick = onEditBlockedKeywords,
+      modifier = Modifier.fillMaxWidth(),
+      contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+    ) {
+      Icon(
+        imageVector = Icons.Default.FilterAlt,
+        contentDescription = null,
+      )
+      Spacer(Modifier.width(8.dp))
+      Text(stringResource(R.string.player_danmaku_edit_blocked_words))
+      Spacer(Modifier.weight(1f))
+      Text(stringResource(R.string.player_danmaku_blocked_count, state.blockedKeywords.size))
+    }
   }
 }
 

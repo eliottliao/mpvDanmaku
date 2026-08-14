@@ -22,7 +22,6 @@ import app.marlboroadvance.mpvex.ui.player.danmaku.DanmakuRenderConfig
 import app.marlboroadvance.mpvex.ui.player.danmaku.DanmakuUiState
 import app.marlboroadvance.mpvex.ui.player.danmaku.DanmakuUiStatus
 import app.marlboroadvance.mpvex.utils.media.MediaInfoParser
-import java.util.Locale
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -73,6 +72,7 @@ class DanmakuCoordinator(
   val renderConfig: StateFlow<DanmakuRenderConfig> = _renderConfig.asStateFlow()
 
   private val generation = AtomicLong(0L)
+  private val itemGeneration = AtomicLong(0L)
   private var sessionJob: Job? = null
   private var offsetPersistJob: Job? = null
   private var opacityPersistJob: Job? = null
@@ -83,9 +83,25 @@ class DanmakuCoordinator(
   private var fingerprint: MediaFingerprint? = null
   private var selection: Selection? = null
   private var selectableEpisodes: Map<Long, Selection> = emptyMap()
+  private var loadedComments: List<RemoteDanmakuComment>? = null
 
   /** anime title + episode of the last search request that actually succeeded. */
   private var lastSearchParams: Pair<String, String?>? = null
+
+  init {
+    scope.launch {
+      kotlinx.coroutines.flow.combine(
+        preferences.blockedKeywords.changes(),
+        preferences.keywordRegexEnabled.changes(),
+      ) { _, _ -> }
+        .collect {
+          refreshPreferenceState()
+          val comments = loadedComments ?: return@collect
+          val selected = selection ?: return@collect
+          rebuildItems(comments, selected, generation.get())
+        }
+    }
+  }
 
   fun openMedia(
     uri: Uri,
@@ -93,6 +109,7 @@ class DanmakuCoordinator(
     durationSeconds: Double,
   ) {
     activeMedia = ActiveMedia(uri, fileName, durationSeconds)
+    loadedComments = null
     refreshPreferenceState()
     if (!preferences.enabled.get()) {
       disableForCurrentSession()
@@ -298,6 +315,7 @@ class DanmakuCoordinator(
       bindingRepository.remove(computed.mediaKey)
       ensureCurrent(token)
       selection = null
+      loadedComments = null
       _items.value = emptyList()
       matchCurrentMedia(api, computed, token)
     }
@@ -359,11 +377,27 @@ class DanmakuCoordinator(
     updateRenderConfig()
   }
 
+  fun addBlockedKeyword(keyword: String) {
+    val trimmed = keyword.trim()
+    if (trimmed.isNotEmpty()) {
+      preferences.blockedKeywords.set(preferences.blockedKeywords.get() + trimmed)
+    }
+  }
+
+  fun removeBlockedKeyword(keyword: String) {
+    preferences.blockedKeywords.set(preferences.blockedKeywords.get() - keyword)
+  }
+
+  fun setKeywordRegexEnabled(enabled: Boolean) {
+    preferences.keywordRegexEnabled.set(enabled)
+  }
+
   fun clearMedia() {
     activeMedia = null
     fingerprint = null
     selection = null
-      selectableEpisodes = emptyMap()
+    selectableEpisodes = emptyMap()
+    loadedComments = null
     lastSearchParams = null
     generation.incrementAndGet()
     sessionJob?.cancel()
@@ -438,6 +472,9 @@ class DanmakuCoordinator(
       fileSize = computed.fileSize,
     )
     ensureCurrent(token)
+    if (selection?.episodeId != selected.episodeId) {
+      loadedComments = null
+    }
     selection = selected
     _state.update { it.copy(offsetMillis = (saved.userOffsetSeconds * 1_000.0).roundToLong()) }
     loadComments(api, computed, selected, forceRefresh, token)
@@ -470,6 +507,7 @@ class DanmakuCoordinator(
       forceRefresh = forceRefresh,
     )
     ensureCurrent(token)
+    loadedComments = result.comments
     rebuildItems(result.comments, selected, token)
     ensureCurrent(token)
     _state.update {
@@ -492,11 +530,15 @@ class DanmakuCoordinator(
     selected: Selection,
     sessionToken: Long,
   ) {
-    val blocked = keywordFilters()
+    val itemToken = itemGeneration.incrementAndGet()
+    val blocked = DanmakuFilter.parseRules(
+      rules = preferences.blockedKeywords.get(),
+      regexEnabled = preferences.keywordRegexEnabled.get(),
+    )
     val rebuilt = withContext(itemDispatcher) {
       comments.asSequence()
         .filter { it.text.isNotBlank() }
-        .filterNot { comment -> blocked.any { it.matches(comment.text) } }
+        .filterNot { comment -> DanmakuFilter.isBlocked(comment.text, blocked) }
         .mapNotNull { comment ->
           val timeMillis = ((comment.timeSeconds + selected.serverShiftSeconds) * 1_000.0)
             .roundToLong()
@@ -519,32 +561,8 @@ class DanmakuCoordinator(
     }
     currentCoroutineContext().ensureActive()
     if (generation.get() != sessionToken) return
+    if (itemGeneration.get() != itemToken) return
     _items.value = rebuilt
-  }
-
-  private fun keywordFilters(): List<KeywordFilter> {
-    val regex = preferences.keywordRegexEnabled.get()
-    return preferences.blockedKeywords.get().mapNotNull { raw ->
-      val value = raw.trim()
-      if (value.isEmpty()) return@mapNotNull null
-      if (regex) {
-        runCatching { KeywordFilter.RegexFilter(Regex(value, RegexOption.IGNORE_CASE)) }.getOrNull()
-      } else {
-        KeywordFilter.Text(value.lowercase(Locale.ROOT))
-      }
-    }
-  }
-
-  private sealed interface KeywordFilter {
-    fun matches(value: String): Boolean
-
-    data class Text(val value: String) : KeywordFilter {
-      override fun matches(value: String): Boolean = value.lowercase(Locale.ROOT).contains(this.value)
-    }
-
-    data class RegexFilter(val regex: Regex) : KeywordFilter {
-      override fun matches(value: String): Boolean = regex.containsMatchIn(value)
-    }
   }
 
   private fun stableSample(id: Long): Float {
@@ -598,6 +616,7 @@ class DanmakuCoordinator(
     generation.incrementAndGet()
     sessionJob?.cancel()
     sessionJob = null
+    loadedComments = null
     _items.value = emptyList()
     _state.update {
       it.copy(
@@ -642,6 +661,8 @@ class DanmakuCoordinator(
         speed = preferences.speed.get().coerceIn(0.25f, 3f),
         density = preferences.density.get().coerceIn(0.05f, 1f),
         displayArea = preferences.displayArea.get().coerceIn(0.2f, 1f),
+        blockedKeywords = preferences.blockedKeywords.get(),
+        keywordRegexEnabled = preferences.keywordRegexEnabled.get(),
       )
     }
     updateRenderConfig()
@@ -658,6 +679,8 @@ class DanmakuCoordinator(
     speed = preferences.speed.get(),
     density = preferences.density.get(),
     displayArea = preferences.displayArea.get(),
+    blockedKeywords = preferences.blockedKeywords.get(),
+    keywordRegexEnabled = preferences.keywordRegexEnabled.get(),
   )
 
   private fun renderConfig(): DanmakuRenderConfig = DanmakuRenderConfig(

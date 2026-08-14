@@ -211,6 +211,9 @@ fun PlayerSheets(
         onFontSizeChange = viewModel.danmaku::setFontSize,
         onDensityChange = viewModel.danmaku::setDensity,
         onDisplayAreaChange = viewModel.danmaku::setDisplayArea,
+        onBlockedKeywordAdd = viewModel.danmaku::addBlockedKeyword,
+        onBlockedKeywordRemove = viewModel.danmaku::removeBlockedKeyword,
+        onKeywordRegexEnabledChange = viewModel.danmaku::setKeywordRegexEnabled,
         onDismissRequest = onDismissRequest,
       )
     }
