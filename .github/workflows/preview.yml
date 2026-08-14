@@ -1,16 +1,17 @@
 name: Preview Build & Deploy
 
-permissions:
-  contents: write
-  pages: write
-  id-token: write
-
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - dev
+      - main
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       commit_count: ${{ steps.set_commit.outputs.commit_count }}
       build_time: ${{ steps.set_commit.outputs.build_time }}
@@ -44,41 +45,53 @@ jobs:
 
       - name: Sign APKs
         run: |
-          set -e
+          set -euo pipefail
           PREVIEW_DIR="app/build/outputs/apk/standard/preview"
           
-          echo "${{ secrets.MPVDANMAKU_SIGNING_KEYSTORE }}" | base64 -d > release.keystore
-          
-          APK_COUNT=$(find "$PREVIEW_DIR" -name "app-standard-*-preview-unsigned.apk" -type f | wc -l)
-          if [ "$APK_COUNT" -eq 0 ]; then
-            echo "No unsigned preview APK files found"
-            ls -lah "$PREVIEW_DIR"
-            rm release.keystore
+          APKSIGNER="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner"
+          if [ ! -x "$APKSIGNER" ]; then
+            echo "apksigner not found or not executable at $APKSIGNER"
             exit 1
           fi
           
-          find "$PREVIEW_DIR" -name "app-standard-*-preview-unsigned.apk" -type f | while read -r apk; do
-            signed_apk="${apk/-unsigned/}"
+          echo "${{ secrets.MPVDANMAKU_SIGNING_KEYSTORE }}" | base64 -d > release.keystore
           
-            $ANDROID_HOME/build-tools/34.0.0/apksigner sign \
+          sign_apk() {
+            local apk="$1"
+            local signed_apk="${apk/-unsigned/}"
+            echo "Signing $apk -> $signed_apk"
+            
+            "$APKSIGNER" sign \
               --ks release.keystore \
               --ks-key-alias "${{ secrets.MPVDANMAKU_SIGNING_KEY_ALIAS }}" \
               --ks-pass "pass:${{ secrets.MPVDANMAKU_SIGNING_STORE_PASSWORD }}" \
               --key-pass "pass:${{ secrets.MPVDANMAKU_KEY_PASSWORD }}" \
               --out "$signed_apk" \
               "$apk"
-          
-            $ANDROID_HOME/build-tools/34.0.0/apksigner verify "$signed_apk"
+            
+            "$APKSIGNER" verify "$signed_apk"
             rm "$apk"
+          }
+          
+          preview_apks=("$PREVIEW_DIR"/app-standard-*-preview-unsigned.apk)
+          if [ ! -e "${preview_apks[0]}" ]; then
+            echo "No unsigned preview APK files found"
+            ls -lah "$PREVIEW_DIR"
+            rm -f release.keystore
+            exit 1
+          fi
+          
+          for apk in "${preview_apks[@]}"; do
+            sign_apk "$apk"
           done
           
-          rm release.keystore
+          rm -f release.keystore
           ls -lh "$PREVIEW_DIR"/app-standard-*-preview.apk
 
       - name: Copy build artifacts
         id: set_commit
         run: |
-          set -e
+          set -euo pipefail
           commit_count=$(git rev-list --count HEAD)
           build_time=$(date -u +"%Y-%m-%d %H:%M UTC")
           echo "commit_count=$commit_count" >> $GITHUB_OUTPUT
@@ -86,12 +99,14 @@ jobs:
 
           declare -a apks=("universal" "arm64-v8a" "armeabi-v7a" "x86" "x86_64")
           mkdir -p output
-          # Initialize empty array for file sizes
-          declare -a file_sizes=()
           
           for arch in "${apks[@]}"; do
             src="app/build/outputs/apk/standard/preview/app-standard-${arch}-preview.apk"
             dest="output/mpvDanmaku-preview-r${commit_count}-${arch}.apk"
+            if [ ! -f "$src" ]; then
+              echo "::error file=$src::Signed preview APK for $arch was not found"
+              exit 1
+            fi
             cp "$src" "$dest"
           
             # Get file size in human-readable format
@@ -108,6 +123,10 @@ jobs:
   publish:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     steps:
       - name: Download artifacts
         uses: actions/download-artifact@v4
@@ -145,7 +164,7 @@ jobs:
               <li><a href='mpvDanmaku-preview-r${commit_count}-x86.apk'>x86 (${{ needs.build.outputs.x86_size }})</a></li>
               <li><a href='mpvDanmaku-preview-r${commit_count}-x86_64.apk'>x86_64 (${{ needs.build.outputs.x86_64_size }})</a></li>
             </ul>
-            <p class='note'>Built automatically from the <code>dev</code> branch.</p>
+            <p class='note'>Built automatically from the <code>${{ github.ref_name }}</code> branch.</p>
           </body>
           </html>" > ./public/index.html
 
@@ -157,6 +176,9 @@ jobs:
   deploy:
     needs: publish
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
     steps:

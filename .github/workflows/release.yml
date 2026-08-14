@@ -25,6 +25,7 @@ jobs:
         with:
           distribution: 'adopt'
           java-version: 17
+          cache: 'gradle'
 
       - name: Make gradlew executable
         run: chmod +x ./gradlew
@@ -48,7 +49,7 @@ jobs:
 
       - name: Get tag name
         if: startsWith(github.ref, 'refs/tags/')
-        run: echo "VERSION_TAG=$(basename $GITHUB_REF)" >> $GITHUB_ENV
+        run: echo "VERSION_TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
 
       - name: Verify build output
         run: |
@@ -83,35 +84,46 @@ jobs:
 
       - name: Sign APKs
         run: |
-          set -e
+          set -euo pipefail
           STANDARD_RELEASE_DIR="app/build/outputs/apk/standard/release"
           PLAYSTORE_RELEASE_DIR="app/build/outputs/apk/playstore/release"
           FDROID_RELEASE_DIR="app/build/outputs/apk/fdroid/release"
           
-          echo "${{ secrets.MPVDANMAKU_SIGNING_KEYSTORE }}" | base64 -d > release.keystore
-          
-          # Sign standard APKs
-          APK_COUNT=$(find "$STANDARD_RELEASE_DIR" -name "app-standard-*-release-unsigned.apk" -type f | wc -l)
-          if [ "$APK_COUNT" -eq 0 ]; then
-            echo "No unsigned standard APK files found"
-            ls -lah "$STANDARD_RELEASE_DIR"
-            rm release.keystore
+          APKSIGNER="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner"
+          if [ ! -x "$APKSIGNER" ]; then
+            echo "apksigner not found or not executable at $APKSIGNER"
             exit 1
           fi
           
-          find "$STANDARD_RELEASE_DIR" -name "app-standard-*-release-unsigned.apk" -type f | while read -r apk; do
-            signed_apk="${apk/-unsigned/}"
+          echo "${{ secrets.MPVDANMAKU_SIGNING_KEYSTORE }}" | base64 -d > release.keystore
           
-            $ANDROID_HOME/build-tools/34.0.0/apksigner sign \
+          sign_apk() {
+            local apk="$1"
+            local signed_apk="${apk/-unsigned/}"
+            echo "Signing $apk -> $signed_apk"
+            
+            "$APKSIGNER" sign \
               --ks release.keystore \
               --ks-key-alias "${{ secrets.MPVDANMAKU_SIGNING_KEY_ALIAS }}" \
               --ks-pass "pass:${{ secrets.MPVDANMAKU_SIGNING_STORE_PASSWORD }}" \
               --key-pass "pass:${{ secrets.MPVDANMAKU_KEY_PASSWORD }}" \
               --out "$signed_apk" \
               "$apk"
-          
-            $ANDROID_HOME/build-tools/34.0.0/apksigner verify "$signed_apk"
+            
+            "$APKSIGNER" verify "$signed_apk"
             rm "$apk"
+          }
+          
+          # Sign standard APKs
+          standard_apks=("$STANDARD_RELEASE_DIR"/app-standard-*-release-unsigned.apk)
+          if [ ! -e "${standard_apks[0]}" ]; then
+            echo "No unsigned standard APK files found"
+            ls -lah "$STANDARD_RELEASE_DIR"
+            rm -f release.keystore
+            exit 1
+          fi
+          for apk in "${standard_apks[@]}"; do
+            sign_apk "$apk"
           done
           
           # Sign Play Store APK (universal only)
@@ -119,47 +131,24 @@ jobs:
           if [ ! -f "$PLAYSTORE_APK" ]; then
             echo "No unsigned Play Store universal APK found"
             ls -lah "$PLAYSTORE_RELEASE_DIR"
-            rm release.keystore
+            rm -f release.keystore
             exit 1
           fi
-          
-          SIGNED_PLAYSTORE_APK="${PLAYSTORE_APK/-unsigned/}"
-          $ANDROID_HOME/build-tools/34.0.0/apksigner sign \
-            --ks release.keystore \
-            --ks-key-alias "${{ secrets.MPVDANMAKU_SIGNING_KEY_ALIAS }}" \
-            --ks-pass "pass:${{ secrets.MPVDANMAKU_SIGNING_STORE_PASSWORD }}" \
-            --key-pass "pass:${{ secrets.MPVDANMAKU_KEY_PASSWORD }}" \
-            --out "$SIGNED_PLAYSTORE_APK" \
-            "$PLAYSTORE_APK"
-          
-          $ANDROID_HOME/build-tools/34.0.0/apksigner verify "$SIGNED_PLAYSTORE_APK"
-          rm "$PLAYSTORE_APK"
+          sign_apk "$PLAYSTORE_APK"
           
           # Sign F-Droid APKs
-          APK_COUNT=$(find "$FDROID_RELEASE_DIR" -name "app-fdroid-*-release-unsigned.apk" -type f | wc -l)
-          if [ "$APK_COUNT" -eq 0 ]; then
+          fdroid_apks=("$FDROID_RELEASE_DIR"/app-fdroid-*-release-unsigned.apk)
+          if [ ! -e "${fdroid_apks[0]}" ]; then
             echo "No unsigned F-Droid APK files found"
             ls -lah "$FDROID_RELEASE_DIR"
-            rm release.keystore
+            rm -f release.keystore
             exit 1
           fi
-          
-          find "$FDROID_RELEASE_DIR" -name "app-fdroid-*-release-unsigned.apk" -type f | while read -r apk; do
-            signed_apk="${apk/-unsigned/}"
-          
-            $ANDROID_HOME/build-tools/34.0.0/apksigner sign \
-              --ks release.keystore \
-              --ks-key-alias "${{ secrets.MPVDANMAKU_SIGNING_KEY_ALIAS }}" \
-              --ks-pass "pass:${{ secrets.MPVDANMAKU_SIGNING_STORE_PASSWORD }}" \
-              --key-pass "pass:${{ secrets.MPVDANMAKU_KEY_PASSWORD }}" \
-              --out "$signed_apk" \
-              "$apk"
-          
-            $ANDROID_HOME/build-tools/34.0.0/apksigner verify "$signed_apk"
-            rm "$apk"
+          for apk in "${fdroid_apks[@]}"; do
+            sign_apk "$apk"
           done
           
-          rm release.keystore
+          rm -f release.keystore
           echo "Standard APKs:"
           ls -lh "$STANDARD_RELEASE_DIR"/app-standard-*-release.apk
           echo "Play Store APK:"

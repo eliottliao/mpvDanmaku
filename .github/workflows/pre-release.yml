@@ -24,6 +24,7 @@ jobs:
         with:
           distribution: 'adopt'
           java-version: 17
+          cache: 'gradle'
 
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
@@ -50,55 +51,70 @@ jobs:
 
       - name: Sign APKs
         run: |
-          set -e
+          set -euo pipefail
           PREVIEW_DIR="app/build/outputs/apk/standard/preview"
           
-          echo "${{ secrets.MPVDANMAKU_SIGNING_KEYSTORE }}" | base64 -d > release.keystore
-          
-          APK_COUNT=$(find "$PREVIEW_DIR" -name "app-standard-*-preview-unsigned.apk" -type f | wc -l)
-          if [ "$APK_COUNT" -eq 0 ]; then
-            echo "No unsigned preview APK files found"
-            ls -lah "$PREVIEW_DIR"
-            rm release.keystore
+          APKSIGNER="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner"
+          if [ ! -x "$APKSIGNER" ]; then
+            echo "apksigner not found or not executable at $APKSIGNER"
             exit 1
           fi
           
-          find "$PREVIEW_DIR" -name "app-standard-*-preview-unsigned.apk" -type f | while read -r apk; do
-            signed_apk="${apk/-unsigned/}"
+          echo "${{ secrets.MPVDANMAKU_SIGNING_KEYSTORE }}" | base64 -d > release.keystore
           
-            $ANDROID_HOME/build-tools/34.0.0/apksigner sign \
+          sign_apk() {
+            local apk="$1"
+            local signed_apk="${apk/-unsigned/}"
+            echo "Signing $apk -> $signed_apk"
+            
+            "$APKSIGNER" sign \
               --ks release.keystore \
               --ks-key-alias "${{ secrets.MPVDANMAKU_SIGNING_KEY_ALIAS }}" \
               --ks-pass "pass:${{ secrets.MPVDANMAKU_SIGNING_STORE_PASSWORD }}" \
               --key-pass "pass:${{ secrets.MPVDANMAKU_KEY_PASSWORD }}" \
               --out "$signed_apk" \
               "$apk"
-          
-            $ANDROID_HOME/build-tools/34.0.0/apksigner verify "$signed_apk"
+            
+            "$APKSIGNER" verify "$signed_apk"
             rm "$apk"
+          }
+          
+          preview_apks=("$PREVIEW_DIR"/app-standard-*-preview-unsigned.apk)
+          if [ ! -e "${preview_apks[0]}" ]; then
+            echo "No unsigned preview APK files found"
+            ls -lah "$PREVIEW_DIR"
+            rm -f release.keystore
+            exit 1
+          fi
+          
+          for apk in "${preview_apks[@]}"; do
+            sign_apk "$apk"
           done
           
-          rm release.keystore
+          rm -f release.keystore
           ls -lh "$PREVIEW_DIR"/app-standard-*-preview.apk
 
       - name: Copy built artifacts
         run: |
-          set -e
+          set -euo pipefail
           mkdir -p preview
           declare -a apks=("universal" "arm64-v8a" "armeabi-v7a" "x86" "x86_64")
 
           for abi in "${apks[@]}"; do
             src="app/build/outputs/apk/standard/preview/app-standard-${abi}-preview.apk"
-            dest="preview/mpvDanmaku-preview-${abi}-${{ env.VERSION_TAG }}.apk"
-            if [ -f "$src" ]; then
-              cp "$src" "$dest"
-              sha=$(sha256sum "$dest" | awk '{ print $1 }')
-              echo "apk-${abi}-sha256=$sha" >> $GITHUB_ENV
+            dest="preview/mpvDanmaku-preview-${abi}-${VERSION_TAG}.apk"
+            if [ ! -f "$src" ]; then
+              echo "::error file=$src::Signed preview APK for $abi was not found"
+              exit 1
             fi
+            cp "$src" "$dest"
+            sha=$(sha256sum "$dest" | awk '{ print $1 }')
+            varname="apk_${abi//-/_}_sha256"
+            echo "$varname=$sha" >> "$GITHUB_ENV"
           done
 
       - name: Create GitHub pre-release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.VERSION_TAG }}
           name: "mpvDanmaku ${{ env.VERSION_TAG }}"
@@ -107,11 +123,11 @@ jobs:
             ### Checksums
             | Variant | SHA-256 |
             | ------- | ------- |
-            | arm64-v8a | ${{ env.apk-arm64-v8a-sha256 }} |
-            | armeabi-v7a | ${{ env.apk-armeabi-v7a-sha256 }} |
-            | Universal | ${{ env.apk-universal-sha256 }} |
-            | x86 | ${{ env.apk-x86-sha256 }} |
-            | x86_64 | ${{ env.apk-x86_64-sha256 }} |
+            | arm64-v8a | ${{ env.apk_arm64_v8a_sha256 }} |
+            | armeabi-v7a | ${{ env.apk_armeabi_v7a_sha256 }} |
+            | Universal | ${{ env.apk_universal_sha256 }} |
+            | x86 | ${{ env.apk_x86_sha256 }} |
+            | x86_64 | ${{ env.apk_x86_64_sha256 }} |
           files: |
             preview/mpvDanmaku-preview-universal-${{ env.VERSION_TAG }}.apk
             preview/mpvDanmaku-preview-arm64-v8a-${{ env.VERSION_TAG }}.apk
