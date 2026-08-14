@@ -68,6 +68,12 @@ enum class RepeatMode {
   ALL       // Repeat all (playlist)
 }
 
+data class DanmakuClockState(
+  val positionMillis: Long? = null,
+  val isPlaying: Boolean = false,
+  val playbackSpeed: Float = 1f,
+)
+
 class PlayerViewModelProviderFactory(
   private val host: PlayerHost,
 ) : ViewModelProvider.Factory {
@@ -178,6 +184,7 @@ class PlayerViewModel(
   val paused by MPVLib.propBoolean["pause"].collectAsState(viewModelScope)
   val pos by MPVLib.propInt["time-pos"].collectAsState(viewModelScope)
   val duration by MPVLib.propInt["duration"].collectAsState(viewModelScope)
+  val playbackSpeed by MPVLib.propFloat["speed"].collectAsState(viewModelScope)
 
   // High-precision position and duration for smooth seekbar
   private val _precisePosition = MutableStateFlow(0f)
@@ -186,19 +193,29 @@ class PlayerViewModel(
   private val _preciseDuration = MutableStateFlow(0f)
   val preciseDuration = _preciseDuration.asStateFlow()
 
+  private val _danmakuClock = MutableStateFlow(DanmakuClockState())
+  val danmakuClock = _danmakuClock.asStateFlow()
+
   // Audio state
   val currentVolume = MutableStateFlow(host.audioManager.getStreamVolume(AudioManager.STREAM_MUSIC))
   private val volumeBoostCap by MPVLib.propInt["volume-max"].collectAsState(viewModelScope)
 
   init {
     // Poll precise position; while paused it only changes on seek, so poll lazily
-    viewModelScope.launch {
+    viewModelScope.launch(Dispatchers.Default) {
       while (isActive) {
-        val time = MPVLib.getPropertyDouble("time-pos")
+        val time = runCatching { MPVLib.getPropertyDouble("time-pos") }.getOrNull()
+        val pausedValue = paused
+        val speed = playbackSpeed?.coerceIn(0.05f, 8f) ?: 1f
         if (time != null) {
           _precisePosition.value = time.toFloat()
         }
-        delay(if (paused != true) 42 else 100) // ~24fps while playing
+        _danmakuClock.value = DanmakuClockState(
+          positionMillis = time?.let { (it * 1_000.0).toLong() },
+          isPlaying = pausedValue == false,
+          playbackSpeed = speed,
+        )
+        delay(if (pausedValue != true) 42 else 100) // ~24fps while playing
       }
     }
 

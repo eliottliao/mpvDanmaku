@@ -4,12 +4,15 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.RenderNode
 import android.graphics.Typeface
+import android.os.Build
 import android.os.SystemClock
 import android.util.AttributeSet
 import android.view.Choreographer
 import android.view.View
 import java.util.LinkedHashMap
+import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -26,25 +29,15 @@ class DanmakuOverlayView @JvmOverloads constructor(
   attrs: AttributeSet? = null,
   defStyleAttr: Int = 0,
 ) : View(context, attrs, defStyleAttr) {
-  private data class RenderEntry(
+  private class RenderEntry(
     val item: DanmakuItem,
     val lane: Int,
     val startMillis: Long,
     val endMillis: Long,
     val textWidth: Float,
     val pixelsPerMillis: Float,
+    var renderNode: RenderNode? = null,
   )
-
-  private data class Geometry(
-    val left: Float,
-    val right: Float,
-    val top: Float,
-    val renderHeight: Float,
-    val laneHeight: Float,
-    val laneCount: Int,
-  ) {
-    val width: Float get() = right - left
-  }
 
   private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG)
   private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG)
@@ -55,15 +48,36 @@ class DanmakuOverlayView @JvmOverloads constructor(
 
   private var items: List<DanmakuItem> = emptyList()
   private var renderConfig = DanmakuRenderConfig()
-  private var positionMillisProvider: () -> Long? = { lastKnownPositionMillis }
-  private var isPlayingProvider: () -> Boolean = { false }
   private var lastKnownPositionMillis = 0L
+  private var clockAnchorPositionMillis = 0L
+  private var clockAnchorUptimeMillis = 0L
+  private var clockSpeed = 1f
+  private var clockIsPlaying = false
+  private var clockInitialized = false
   private var lastRenderedPositionMillis: Long? = null
   private var nextItemIndex = 0
   private var timelineInitialized = false
   private var timelineNeedsRebuild = true
   private var laneAllocator: LaneAllocator? = null
   private val renderEntries = mutableListOf<RenderEntry>()
+  private var timelineCatchUpPending = false
+
+  private var cachedDensity = resources.displayMetrics.density
+  private var cachedScaledDensity = resources.displayMetrics.scaledDensity
+  private var cachedTextSize = Float.NaN
+  private var fontTop = 0f
+  private var fontHeight = 0f
+
+  // Cached layout geometry and precomputed per-lane text baselines
+  private var geoLeft = 0f
+  private var geoRight = 0f
+  private var geoTop = 0f
+  private var geoWidth = 0f
+  private var geoRenderHeight = 0f
+  private var geoLaneHeight = 0f
+  private var geoLaneCount = 0
+  private var laneBaselines = FloatArray(0)
+  private var hasValidGeometry = false
 
   private var framePosted = false
   private var delayedWakePosted = false
@@ -86,15 +100,12 @@ class DanmakuOverlayView @JvmOverloads constructor(
     fillPaint.typeface = Typeface.DEFAULT_BOLD
     strokePaint.typeface = Typeface.DEFAULT_BOLD
     strokePaint.style = Paint.Style.STROKE
+    preparePaints()
   }
 
   /** Replaces the complete media timeline. Input order is not significant. */
   fun setDanmakuItems(items: List<DanmakuItem>) {
     this.items = items
-      .asSequence()
-      .filter { it.text.isNotBlank() }
-      .sortedWith(compareBy<DanmakuItem> { it.timeMillis }.thenBy { it.id })
-      .toList()
     resetTimeline(clearMeasurements = false)
     requestRender()
   }
@@ -103,26 +114,56 @@ class DanmakuOverlayView @JvmOverloads constructor(
   fun setRenderConfig(config: DanmakuRenderConfig) {
     val normalized = config.normalized()
     if (normalized == renderConfig) return
-    val typographyChanged = normalized.fontSizeSp != renderConfig.fontSizeSp
+    val oldConfig = renderConfig
+    val layoutChanged = normalized.enabled != oldConfig.enabled ||
+      normalized.showScrolling != oldConfig.showScrolling ||
+      normalized.showBottom != oldConfig.showBottom ||
+      normalized.showTop != oldConfig.showTop ||
+      normalized.fontSizeSp != oldConfig.fontSizeSp ||
+      normalized.speed != oldConfig.speed ||
+      normalized.density != oldConfig.density ||
+      normalized.displayArea != oldConfig.displayArea ||
+      normalized.maxOnScreen != oldConfig.maxOnScreen ||
+      normalized.fixedDurationMillis != oldConfig.fixedDurationMillis ||
+      normalized.laneSpacingDp != oldConfig.laneSpacingDp ||
+      normalized.timeOffsetMillis != oldConfig.timeOffsetMillis ||
+      normalized.strokeWidthDp != oldConfig.strokeWidthDp ||
+      normalized.strokeColorArgb != oldConfig.strokeColorArgb
     renderConfig = normalized
-    resetTimeline(clearMeasurements = typographyChanged)
+    preparePaints()
+    updateGeometry()
+    if (layoutChanged) {
+      resetTimeline(clearMeasurements = normalized.fontSizeSp != oldConfig.fontSizeSp)
+    }
     requestRender()
   }
 
-  /**
-   * Installs the mpv-backed media position and playback-state providers.
-   *
-   * The position provider may return null while the player has no usable time, e.g. across a file
-   * or track transition. Null keeps the last known position instead of being read as a seek.
-   */
-  fun setClockProviders(
-    positionMillisProvider: () -> Long?,
-    isPlayingProvider: () -> Boolean,
-  ) {
-    this.positionMillisProvider = positionMillisProvider
-    this.isPlayingProvider = isPlayingProvider
-    timelineNeedsRebuild = true
-    notifyPlaybackStateChanged()
+  /** Supplies a sampled player clock; no mpv calls are made from the draw path. */
+  fun updateClock(positionMillis: Long?, isPlaying: Boolean, playbackSpeed: Float = 1f) {
+    val now = SystemClock.uptimeMillis()
+    val speed = playbackSpeed.coerceIn(0.05f, 8f)
+    val projected = if (clockInitialized && clockIsPlaying) {
+      clockAnchorPositionMillis + ((now - clockAnchorUptimeMillis) * clockSpeed).toLong()
+    } else {
+      clockAnchorPositionMillis
+    }
+    if (positionMillis != null) {
+      clockAnchorPositionMillis = positionMillis
+      clockAnchorUptimeMillis = now
+      clockInitialized = true
+    } else if (!clockInitialized || isPlaying != clockIsPlaying) {
+      clockAnchorPositionMillis = projected
+      clockAnchorUptimeMillis = now
+      clockInitialized = true
+    }
+    clockSpeed = speed
+    clockIsPlaying = isPlaying
+    lastKnownPositionMillis = if (isPlaying) {
+      clockAnchorPositionMillis + ((now - clockAnchorUptimeMillis) * speed).toLong()
+    } else {
+      clockAnchorPositionMillis
+    }
+    requestRender()
   }
 
   /**
@@ -132,8 +173,7 @@ class DanmakuOverlayView @JvmOverloads constructor(
    * seek callbacks optional when the position provider already reports the new media time.
    */
   fun updatePosition(positionMillis: Long) {
-    lastKnownPositionMillis = positionMillis
-    requestRender()
+    updateClock(positionMillis, clockIsPlaying, clockSpeed)
   }
 
   /** Re-evaluates frame scheduling after pause, resume, playback end, or player replacement. */
@@ -157,22 +197,26 @@ class DanmakuOverlayView @JvmOverloads constructor(
       return
     }
 
-    val geometry = calculateGeometry() ?: return
-    preparePaints()
+    if (!hasValidGeometry && !updateGeometry()) return
     val positionMillis = readPositionMillis()
-    synchronizeTimeline(positionMillis, geometry)
+    val effectivePosition = effectivePositionMillis(positionMillis)
+    synchronizeTimeline(effectivePosition)
 
     var visibleCount = 0
-    renderEntries.forEach { entry ->
-      if (entry.startMillis <= positionMillis && positionMillis < entry.endMillis) {
-        drawEntry(canvas, entry, positionMillis, geometry)
+    var index = 0
+    val size = renderEntries.size
+    while (index < size) {
+      val entry = renderEntries[index]
+      if (entry.startMillis <= effectivePosition && effectivePosition < entry.endMillis) {
+        drawEntry(canvas, entry, effectivePosition)
         visibleCount++
       }
+      index++
     }
 
-    lastRenderedPositionMillis = positionMillis
+    lastRenderedPositionMillis = effectivePosition
     if (shouldAnimate()) {
-      if (visibleCount > 0) scheduleFrame() else scheduleNextWake(positionMillis)
+      if (timelineCatchUpPending || visibleCount > 0) scheduleFrame() else scheduleNextWake(positionMillis)
     } else {
       cancelScheduledDraws()
     }
@@ -180,6 +224,7 @@ class DanmakuOverlayView @JvmOverloads constructor(
 
   override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
     super.onSizeChanged(width, height, oldWidth, oldHeight)
+    updateGeometry()
     if (width != oldWidth || height != oldHeight) resetTimeline(clearMeasurements = false)
   }
 
@@ -203,26 +248,29 @@ class DanmakuOverlayView @JvmOverloads constructor(
     if (visibility == VISIBLE) requestRender() else cancelScheduledDraws()
   }
 
-  private fun synchronizeTimeline(positionMillis: Long, geometry: Geometry) {
+  private fun synchronizeTimeline(effectivePosition: Long) {
     val previousPosition = lastRenderedPositionMillis
     val discontinuity = previousPosition != null &&
-      (positionMillis < previousPosition - BACKWARD_SEEK_TOLERANCE_MS ||
-        positionMillis - previousPosition > FORWARD_SEEK_THRESHOLD_MS)
+      (effectivePosition < previousPosition - BACKWARD_SEEK_TOLERANCE_MS ||
+        effectivePosition - previousPosition > FORWARD_SEEK_THRESHOLD_MS)
 
     if (timelineNeedsRebuild || !timelineInitialized || discontinuity) {
-      rebuildTimeline(positionMillis, geometry)
+      rebuildTimeline(effectivePosition)
       return
     }
 
-    renderEntries.removeAll { it.endMillis <= positionMillis }
-    processItemsThrough(positionMillis, geometry)
+    compactExpiredEntries(effectivePosition)
+    timelineCatchUpPending = processItemsThrough(effectivePosition)
   }
 
-  private fun rebuildTimeline(positionMillis: Long, geometry: Geometry) {
+  private fun rebuildTimeline(effectivePosition: Long) {
+    for (i in renderEntries.indices) {
+      discardRenderNode(renderEntries[i])
+    }
     renderEntries.clear()
     laneAllocator = LaneAllocator(
-      laneCount = geometry.laneCount,
-      viewportWidth = geometry.width,
+      laneCount = geoLaneCount,
+      viewportWidth = geoWidth,
       horizontalGap = dp(renderConfig.laneSpacingDp),
     )
 
@@ -230,114 +278,201 @@ class DanmakuOverlayView @JvmOverloads constructor(
       MAX_SCROLL_DURATION_MS,
       renderConfig.fixedDurationMillis,
     )
-    nextItemIndex = lowerBound(positionMillis - lookbackMillis)
+    nextItemIndex = lowerBound(effectivePosition - lookbackMillis)
     timelineInitialized = true
     timelineNeedsRebuild = false
-    processItemsThrough(positionMillis, geometry)
+    timelineCatchUpPending = processItemsThrough(effectivePosition)
   }
 
-  private fun processItemsThrough(positionMillis: Long, geometry: Geometry) {
-    val allocator = laneAllocator ?: return
-    while (nextItemIndex < items.size && items[nextItemIndex].timeMillis <= positionMillis) {
+  private fun processItemsThrough(effectivePosition: Long): Boolean {
+    val allocator = laneAllocator ?: return false
+    var processed = 0
+    while (
+      nextItemIndex < items.size &&
+      items[nextItemIndex].timeMillis <= effectivePosition &&
+      processed++ < MAX_ITEMS_PROCESSED_PER_DRAW
+    ) {
       val item = items[nextItemIndex++]
-      if (!isModeVisible(item.mode) || !passesDensitySample(item)) continue
+      if (!isModeVisible(item.mode)) continue
+      if (!passesDensitySample(item)) continue
 
       val textWidth = measureText(item.text)
-      val timing = calculateTiming(item, textWidth, geometry.width)
-      if (timing.second <= positionMillis && item.timeMillis < positionMillis) continue
-      if (allocator.activeCountAt(item.timeMillis) >= renderConfig.maxOnScreen) continue
+      val startMillis = item.timeMillis
+      calculateTiming(item, textWidth, geoWidth, startMillis)
+      if (timingEndMillis <= effectivePosition && startMillis < effectivePosition) continue
+      if (allocator.activeCountAt(startMillis) >= renderConfig.maxOnScreen) continue
 
-      val allocationEntry = LaneAllocator.Entry(
-        startMillis = item.timeMillis,
-        endMillis = timing.second,
+      val lane = allocator.allocate(
+        startMillis = startMillis,
+        endMillis = timingEndMillis,
         textWidth = textWidth,
-        pixelsPerMillis = timing.first,
+        pixelsPerMillis = timingPixelsPerMillis,
         mode = item.mode,
-      )
-      val lane = allocator.allocate(allocationEntry) ?: continue
+      ) ?: continue
+
+      val renderNode = createRenderNodeIfNeeded(item, textWidth)
       renderEntries += RenderEntry(
         item = item,
         lane = lane,
-        startMillis = item.timeMillis,
-        endMillis = timing.second,
+        startMillis = startMillis,
+        endMillis = timingEndMillis,
         textWidth = textWidth,
-        pixelsPerMillis = timing.first,
+        pixelsPerMillis = timingPixelsPerMillis,
+        renderNode = renderNode,
       )
     }
+    return nextItemIndex < items.size && items[nextItemIndex].timeMillis <= effectivePosition
   }
 
-  /** Returns pixels/ms and end time. Fixed comments use zero velocity. */
+  private var timingPixelsPerMillis = 0f
+  private var timingEndMillis = 0L
+
+  /** Writes pixels/ms and end time into scratch fields. Fixed comments use zero velocity. */
   private fun calculateTiming(
     item: DanmakuItem,
     textWidth: Float,
     viewportWidth: Float,
-  ): Pair<Float, Long> {
+    startMillis: Long,
+  ) {
     if (item.mode != DanmakuMode.SCROLLING) {
-      return 0f to saturatedAdd(item.timeMillis, renderConfig.fixedDurationMillis)
+      timingPixelsPerMillis = 0f
+      timingEndMillis = saturatedAdd(startMillis, renderConfig.fixedDurationMillis)
+      return
     }
 
     val pixelsPerMillis = dp(BASE_SCROLL_DP_PER_SECOND) * renderConfig.speed / 1_000f
     val unclampedDuration = ((viewportWidth + textWidth) / pixelsPerMillis).toLong()
     val duration = unclampedDuration.coerceIn(MIN_SCROLL_DURATION_MS, MAX_SCROLL_DURATION_MS)
-    val actualPixelsPerMillis = (viewportWidth + textWidth) / duration
-    return actualPixelsPerMillis to saturatedAdd(item.timeMillis, duration)
+    timingPixelsPerMillis = (viewportWidth + textWidth) / duration
+    timingEndMillis = saturatedAdd(startMillis, duration)
   }
 
   private fun drawEntry(
     canvas: Canvas,
     entry: RenderEntry,
-    positionMillis: Long,
-    geometry: Geometry,
+    effectivePosition: Long,
   ) {
-    val baseline = geometry.top + entry.lane * geometry.laneHeight - fillPaint.fontMetrics.top
+    val baseline = if (entry.lane in laneBaselines.indices) {
+      laneBaselines[entry.lane]
+    } else {
+      geoTop + entry.lane * geoLaneHeight - fontTop
+    }
     val x = when (entry.item.mode) {
-      DanmakuMode.SCROLLING -> geometry.right -
-        entry.pixelsPerMillis * (positionMillis - entry.startMillis)
+      DanmakuMode.SCROLLING -> geoRight -
+        entry.pixelsPerMillis * (effectivePosition - entry.startMillis)
       DanmakuMode.BOTTOM,
       DanmakuMode.TOP,
-      -> geometry.left + (geometry.width - entry.textWidth) / 2f
+      -> geoLeft + (geoWidth - entry.textWidth) / 2f
     }
 
-    val itemAlpha = Color.alpha(entry.item.colorArgb)
-    fillPaint.color = entry.item.colorArgb
-    fillPaint.alpha = (itemAlpha * renderConfig.opacity).roundToInt().coerceIn(0, 255)
-    strokePaint.color = renderConfig.strokeColorArgb
-    strokePaint.alpha = (Color.alpha(renderConfig.strokeColorArgb) * renderConfig.opacity)
-      .roundToInt()
-      .coerceIn(0, 255)
-    if (strokePaint.strokeWidth > 0f && strokePaint.alpha > 0) {
-      canvas.drawText(entry.item.text, x, baseline, strokePaint)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && canvas.isHardwareAccelerated && entry.renderNode != null) {
+      val node = entry.renderNode!!
+      node.alpha = renderConfig.opacity
+      node.translationX = x - RENDER_NODE_PADDING
+      node.translationY = baseline + fontTop - RENDER_NODE_PADDING
+      canvas.drawRenderNode(node)
+    } else {
+      val itemAlpha = Color.alpha(entry.item.colorArgb)
+      fillPaint.color = entry.item.colorArgb
+      fillPaint.alpha = (itemAlpha * renderConfig.opacity).roundToInt().coerceIn(0, 255)
+      if (strokePaint.strokeWidth > 0f && strokePaint.alpha > 0) {
+        canvas.drawText(entry.item.text, x, baseline, strokePaint)
+      }
+      canvas.drawText(entry.item.text, x, baseline, fillPaint)
     }
-    canvas.drawText(entry.item.text, x, baseline, fillPaint)
+  }
+
+  private fun createRenderNodeIfNeeded(item: DanmakuItem, textWidth: Float): RenderNode? {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
+    return runCatching {
+      val node = RenderNode("Danmaku_${item.id}")
+      val padding = RENDER_NODE_PADDING
+      val w = ceil(textWidth + padding * 2f).toInt().coerceAtLeast(1)
+      val h = ceil(fontHeight + padding * 2f).toInt().coerceAtLeast(1)
+      node.setPosition(0, 0, w, h)
+      val recordingCanvas = node.beginRecording()
+      val drawX = padding.toFloat()
+      val drawY = -fontTop + padding.toFloat()
+      val itemAlpha = Color.alpha(item.colorArgb)
+      val strokeBaseAlpha = Color.alpha(renderConfig.strokeColorArgb)
+      fillPaint.color = item.colorArgb
+      fillPaint.alpha = itemAlpha
+      strokePaint.alpha = strokeBaseAlpha
+      if (strokePaint.strokeWidth > 0f && strokeBaseAlpha > 0) {
+        recordingCanvas.drawText(item.text, drawX, drawY, strokePaint)
+      }
+      recordingCanvas.drawText(item.text, drawX, drawY, fillPaint)
+      node.endRecording()
+      node.alpha = renderConfig.opacity
+      strokePaint.alpha = (strokeBaseAlpha * renderConfig.opacity).roundToInt().coerceIn(0, 255)
+      node
+    }.getOrNull()
+  }
+
+  private fun discardRenderNode(entry: RenderEntry) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+      entry.renderNode?.discardDisplayList()
+      entry.renderNode = null
+    }
   }
 
   private fun preparePaints() {
     val textSize = sp(renderConfig.fontSizeSp)
+    val textChanged = textSize != cachedTextSize
+    val strokeWidth = dp(renderConfig.strokeWidthDp)
+    val strokeChanged = strokePaint.strokeWidth != strokeWidth
+    if (textChanged) {
+      cachedTextSize = textSize
+      fillPaint.textSize = textSize
+      strokePaint.textSize = textSize
+      fillPaint.fontMetrics.let {
+        fontTop = it.top
+        fontHeight = it.bottom - it.top
+      }
+    }
     fillPaint.textSize = textSize
     fillPaint.style = Paint.Style.FILL
-    strokePaint.textSize = textSize
-    strokePaint.strokeWidth = dp(renderConfig.strokeWidthDp)
+    if (strokeChanged) strokePaint.strokeWidth = strokeWidth
+    strokePaint.color = renderConfig.strokeColorArgb
+    strokePaint.alpha = (Color.alpha(renderConfig.strokeColorArgb) * renderConfig.opacity)
+      .roundToInt()
+      .coerceIn(0, 255)
   }
 
-  private fun calculateGeometry(): Geometry? {
+  private fun updateGeometry(): Boolean {
     val contentWidth = width - paddingLeft - paddingRight
     val contentHeight = height - paddingTop - paddingBottom
-    if (contentWidth <= 0 || contentHeight <= 0) return null
+    if (contentWidth <= 0 || contentHeight <= 0) {
+      hasValidGeometry = false
+      return false
+    }
 
-    preparePaints()
-    val fontHeight = fillPaint.fontMetrics.run { bottom - top }
     val laneHeight = ceil(fontHeight + dp(renderConfig.laneSpacingDp))
     val renderHeight = contentHeight * renderConfig.displayArea
     val laneCount = (renderHeight / laneHeight).toInt()
-    if (laneCount <= 0) return null
-    return Geometry(
-      left = paddingLeft.toFloat(),
-      right = (width - paddingRight).toFloat(),
-      top = paddingTop.toFloat(),
-      renderHeight = renderHeight,
-      laneHeight = laneHeight,
-      laneCount = laneCount,
-    )
+    if (laneCount <= 0) {
+      hasValidGeometry = false
+      return false
+    }
+
+    geoLeft = paddingLeft.toFloat()
+    geoRight = (width - paddingRight).toFloat()
+    geoTop = paddingTop.toFloat()
+    geoWidth = contentWidth.toFloat()
+    geoRenderHeight = renderHeight
+    geoLaneHeight = laneHeight
+    geoLaneCount = laneCount
+
+    if (laneBaselines.size != laneCount) {
+      laneBaselines = FloatArray(laneCount)
+    }
+    var lane = 0
+    while (lane < laneCount) {
+      laneBaselines[lane] = geoTop + lane * geoLaneHeight - fontTop
+      lane++
+    }
+    hasValidGeometry = true
+    return true
   }
 
   private fun measureText(text: String): Float = textWidthCache[text]
@@ -372,14 +507,12 @@ class DanmakuOverlayView @JvmOverloads constructor(
 
   private fun scheduleNextWake(positionMillis: Long) {
     if (delayedWakePosted || framePosted || !shouldAnimate()) return
+    val effectivePosition = effectivePositionMillis(positionMillis)
     val nextTime = items.getOrNull(nextItemIndex)?.timeMillis
-    // Past the last comment there is nothing to wait for, but the clock still has to be polled: the
-    // position provider is the only seek signal this view gets, so stopping here would leave the
-    // overlay blank for the rest of playback after a backward seek.
     val delay = if (nextTime == null) {
       MAX_WAKE_DELAY_MS
     } else {
-      (nextTime - positionMillis - WAKE_EARLY_MS).coerceIn(MIN_WAKE_DELAY_MS, MAX_WAKE_DELAY_MS)
+      (nextTime - effectivePosition - WAKE_EARLY_MS).coerceIn(MIN_WAKE_DELAY_MS, MAX_WAKE_DELAY_MS)
     }
     delayedWakePosted = true
     postDelayed(delayedWake, delay)
@@ -391,6 +524,8 @@ class DanmakuOverlayView @JvmOverloads constructor(
       if (shouldAnimate()) scheduleFrame()
     }
   }
+
+
 
   private fun scheduleFrame() {
     if (framePosted || !isAttachedToWindow) return
@@ -412,11 +547,34 @@ class DanmakuOverlayView @JvmOverloads constructor(
     isAttachedToWindow &&
     visibility == VISIBLE &&
     windowVisibility == VISIBLE &&
-    runCatching(isPlayingProvider).getOrDefault(false)
+    clockIsPlaying
 
-  private fun readPositionMillis(): Long =
-    (runCatching(positionMillisProvider).getOrNull() ?: lastKnownPositionMillis)
+  private fun readPositionMillis(): Long {
+    if (!clockInitialized || !clockIsPlaying) return lastKnownPositionMillis
+    val elapsed = SystemClock.uptimeMillis() - clockAnchorUptimeMillis
+    return (clockAnchorPositionMillis + (elapsed * clockSpeed).toLong())
       .also { lastKnownPositionMillis = it }
+  }
+
+  private fun compactExpiredEntries(effectivePosition: Long) {
+    var writeIndex = 0
+    var readIndex = 0
+    while (readIndex < renderEntries.size) {
+      val entry = renderEntries[readIndex]
+      if (entry.endMillis > effectivePosition) {
+        renderEntries[writeIndex++] = entry
+      } else {
+        discardRenderNode(entry)
+      }
+      readIndex++
+    }
+    while (renderEntries.size > writeIndex) {
+      discardRenderNode(renderEntries.removeAt(renderEntries.lastIndex))
+    }
+  }
+
+  private fun effectivePositionMillis(positionMillis: Long): Long =
+    positionMillis - renderConfig.timeOffsetMillis
 
   private fun resetTimeline(clearMeasurements: Boolean) {
     timelineInitialized = false
@@ -424,13 +582,16 @@ class DanmakuOverlayView @JvmOverloads constructor(
     lastRenderedPositionMillis = null
     nextItemIndex = 0
     laneAllocator = null
+    for (i in renderEntries.indices) {
+      discardRenderNode(renderEntries[i])
+    }
     renderEntries.clear()
     if (clearMeasurements) textWidthCache.clear()
   }
 
-  private fun sp(value: Float): Float = value * resources.displayMetrics.scaledDensity
+  private fun sp(value: Float): Float = value * cachedScaledDensity
 
-  private fun dp(value: Float): Float = value * resources.displayMetrics.density
+  private fun dp(value: Float): Float = value * cachedDensity
 
   private fun saturatedAdd(left: Long, right: Long): Long =
     if (right > 0 && left > Long.MAX_VALUE - right) Long.MAX_VALUE else left + right
@@ -445,6 +606,7 @@ class DanmakuOverlayView @JvmOverloads constructor(
     fixedDurationMillis = fixedDurationMillis.coerceIn(500L, 30_000L),
     strokeWidthDp = strokeWidthDp.finiteOr(2f).coerceIn(0f, 8f),
     laneSpacingDp = laneSpacingDp.finiteOr(4f).coerceIn(0f, 24f),
+    timeOffsetMillis = timeOffsetMillis.coerceIn(-600_000L, 600_000L),
   )
 
   private fun Float.finiteOr(fallback: Float): Float = if (isFinite()) this else fallback
@@ -453,6 +615,7 @@ class DanmakuOverlayView @JvmOverloads constructor(
     (this shl bitCount) or (this ushr (Long.SIZE_BITS - bitCount))
 
   private companion object {
+    const val RENDER_NODE_PADDING = 4
     const val TEXT_WIDTH_CACHE_SIZE = 2_048
     const val BASE_SCROLL_DP_PER_SECOND = 120f
     const val MIN_SCROLL_DURATION_MS = 2_500L
@@ -462,6 +625,7 @@ class DanmakuOverlayView @JvmOverloads constructor(
     const val WAKE_EARLY_MS = 50L
     const val MIN_WAKE_DELAY_MS = 16L
     const val MAX_WAKE_DELAY_MS = 100L
+    const val MAX_ITEMS_PROCESSED_PER_DRAW = 512
+    const val CLOCK_REANCHOR_THRESHOLD_MS = 250L
   }
 }
-

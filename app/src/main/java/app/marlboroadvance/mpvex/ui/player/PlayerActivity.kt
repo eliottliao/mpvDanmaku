@@ -1,4 +1,4 @@
-﻿package app.marlboroadvance.mpvex.ui.player
+package app.marlboroadvance.mpvex.ui.player
 
 import android.content.BroadcastReceiver
 import android.content.ComponentName
@@ -501,22 +501,39 @@ class PlayerActivity :
    * Wires the dandanplay danmaku overlay to the mpv clock and renderer state.
    */
   private fun setupDanmakuOverlay() {
-    binding.danmakuOverlay.setClockProviders(
-      positionMillisProvider = {
-        // Null while mpv has no usable time (file/track transition). Reporting 0 here would look
-        // like a seek to the start and rebuild the overlay timeline from the episode beginning.
-        MPVLib.getPropertyDouble("time-pos")?.let { (it * 1000).toLong() }
-      },
-      isPlayingProvider = {
-        MPVLib.getPropertyBoolean("pause") != true
-      },
-    )
     lifecycleScope.launch {
-      viewModel.danmaku.items.collect { binding.danmakuOverlay.setDanmakuItems(it) }
+      viewModel.danmaku.items.collect { items ->
+        binding.danmakuOverlay.setDanmakuItems(items)
+        updateDanmakuOverlayVisibility()
+      }
     }
     lifecycleScope.launch {
-      viewModel.danmaku.renderConfig.collect { binding.danmakuOverlay.setRenderConfig(it) }
+      viewModel.danmaku.renderConfig.collect { config ->
+        binding.danmakuOverlay.setRenderConfig(config)
+        updateDanmakuOverlayVisibility()
+      }
     }
+    lifecycleScope.launch {
+      viewModel.danmakuClock.collect { clock ->
+        binding.danmakuOverlay.updateClock(
+          positionMillis = clock.positionMillis,
+          isPlaying = clock.isPlaying,
+          playbackSpeed = clock.playbackSpeed,
+        )
+      }
+    }
+  }
+
+  private fun updateDanmakuOverlayVisibility() {
+    val isPip = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) isInPictureInPictureMode else false
+    binding.danmakuOverlay.visibility =
+      if (isPip && !danmakuPreferences.showInPip.get()) {
+        View.GONE
+      } else if (viewModel.danmaku.renderConfig.value.enabled && viewModel.danmaku.items.value.isNotEmpty()) {
+        View.VISIBLE
+      } else {
+        View.GONE
+      }
   }
 
   /**
@@ -2401,12 +2418,7 @@ class PlayerActivity :
     binding.controls.alpha = if (isInPictureInPictureMode) 0f else 1f
 
     // Hide the danmaku overlay in PiP unless the user explicitly enabled it
-    binding.danmakuOverlay.visibility =
-      if (isInPictureInPictureMode && !danmakuPreferences.showInPip.get()) {
-        View.GONE
-      } else {
-        View.VISIBLE
-      }
+    updateDanmakuOverlayVisibility()
 
     runCatching {
       if (isInPictureInPictureMode) {

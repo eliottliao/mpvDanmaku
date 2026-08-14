@@ -37,5 +37,5 @@ data class DanmakuRenderConfig(
   val strokeWidthDp: Float = 2f,
   val strokeColorArgb: Int = 0xFF000000.toInt(),
   val laneSpacingDp: Float = 4f,
+  val timeOffsetMillis: Long = 0L,
 )
-

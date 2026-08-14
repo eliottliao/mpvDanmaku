@@ -73,13 +73,15 @@ class DanmakuCoordinator(
   val renderConfig: StateFlow<DanmakuRenderConfig> = _renderConfig.asStateFlow()
 
   private val generation = AtomicLong(0L)
-  private val itemGeneration = AtomicLong(0L)
   private var sessionJob: Job? = null
-  private var rebuildJob: Job? = null
+  private var offsetPersistJob: Job? = null
+  private var opacityPersistJob: Job? = null
+  private var fontSizePersistJob: Job? = null
+  private var densityPersistJob: Job? = null
+  private var displayAreaPersistJob: Job? = null
   private var activeMedia: ActiveMedia? = null
   private var fingerprint: MediaFingerprint? = null
   private var selection: Selection? = null
-  private var rawComments: List<RemoteDanmakuComment> = emptyList()
   private var selectableEpisodes: Map<Long, Selection> = emptyMap()
 
   /** anime title + episode of the last search request that actually succeeded. */
@@ -117,7 +119,6 @@ class DanmakuCoordinator(
         )
       }
       _items.value = emptyList()
-      rawComments = emptyList()
       selection = null
       selectableEpisodes = emptyMap()
 
@@ -297,7 +298,6 @@ class DanmakuCoordinator(
       bindingRepository.remove(computed.mediaKey)
       ensureCurrent(token)
       selection = null
-      rawComments = emptyList()
       _items.value = emptyList()
       matchCurrentMedia(api, computed, token)
     }
@@ -306,37 +306,56 @@ class DanmakuCoordinator(
   fun setOffset(offsetMillis: Long) {
     val clamped = offsetMillis.coerceIn(-600_000L, 600_000L)
     _state.update { it.copy(offsetMillis = clamped) }
-    launchItemRebuild()
+    updateRenderConfig()
     val mediaKey = fingerprint?.mediaKey ?: return
-    scope.launch { bindingRepository.updateOffset(mediaKey, clamped / 1_000.0) }
+    offsetPersistJob?.cancel()
+    offsetPersistJob = scope.launch {
+      kotlinx.coroutines.delay(150L)
+      bindingRepository.updateOffset(mediaKey, clamped / 1_000.0)
+    }
   }
 
   fun setOpacity(value: Float) {
     val clamped = value.coerceIn(0.1f, 1f)
-    preferences.opacity.set(clamped)
     _state.update { it.copy(opacity = clamped) }
+    opacityPersistJob?.cancel()
+    opacityPersistJob = scope.launch {
+      kotlinx.coroutines.delay(150L)
+      preferences.opacity.set(clamped)
+    }
     updateRenderConfig()
   }
 
   fun setFontSize(value: Float) {
     val clamped = value.coerceIn(12f, 64f)
-    preferences.fontSize.set(clamped)
     _state.update { it.copy(fontSize = clamped) }
+    fontSizePersistJob?.cancel()
+    fontSizePersistJob = scope.launch {
+      kotlinx.coroutines.delay(150L)
+      preferences.fontSize.set(clamped)
+    }
     updateRenderConfig()
   }
 
   fun setDensity(value: Float) {
     val clamped = value.coerceIn(0.05f, 1f)
-    preferences.density.set(clamped)
     _state.update { it.copy(density = clamped) }
-    launchItemRebuild()
+    densityPersistJob?.cancel()
+    densityPersistJob = scope.launch {
+      kotlinx.coroutines.delay(150L)
+      preferences.density.set(clamped)
+    }
     updateRenderConfig()
   }
 
   fun setDisplayArea(value: Float) {
     val clamped = value.coerceIn(0.2f, 1f)
-    preferences.displayArea.set(clamped)
     _state.update { it.copy(displayArea = clamped) }
+    displayAreaPersistJob?.cancel()
+    displayAreaPersistJob = scope.launch {
+      kotlinx.coroutines.delay(150L)
+      preferences.displayArea.set(clamped)
+    }
     updateRenderConfig()
   }
 
@@ -344,19 +363,22 @@ class DanmakuCoordinator(
     activeMedia = null
     fingerprint = null
     selection = null
-    rawComments = emptyList()
-    selectableEpisodes = emptyMap()
+      selectableEpisodes = emptyMap()
     lastSearchParams = null
     generation.incrementAndGet()
     sessionJob?.cancel()
     sessionJob = null
-    cancelItemRebuild()
     _items.value = emptyList()
     _state.value = initialState()
     updateRenderConfig()
   }
 
   override fun close() {
+    offsetPersistJob?.cancel()
+    opacityPersistJob?.cancel()
+    fontSizePersistJob?.cancel()
+    densityPersistJob?.cancel()
+    displayAreaPersistJob?.cancel()
     clearMedia()
   }
 
@@ -448,8 +470,7 @@ class DanmakuCoordinator(
       forceRefresh = forceRefresh,
     )
     ensureCurrent(token)
-    rawComments = result.comments
-    rebuildItems(token)
+    rebuildItems(result.comments, selected, token)
     ensureCurrent(token)
     _state.update {
       it.copy(
@@ -466,33 +487,18 @@ class DanmakuCoordinator(
     }
   }
 
-  private fun launchItemRebuild() {
-    val sessionToken = generation.get()
-    val rebuildToken = itemGeneration.incrementAndGet()
-    rebuildJob?.cancel()
-    rebuildJob = scope.launch {
-      rebuildItems(sessionToken, rebuildToken)
-    }
-  }
-
   private suspend fun rebuildItems(
+    comments: List<RemoteDanmakuComment>,
+    selected: Selection,
     sessionToken: Long,
-    rebuildToken: Long = itemGeneration.incrementAndGet(),
   ) {
-    val selected = selection ?: run {
-      _items.value = emptyList()
-      return
-    }
-    val offsetSeconds = _state.value.offsetMillis / 1_000.0
-    val density = _state.value.density.coerceIn(0.05f, 1f)
     val blocked = keywordFilters()
-    val comments = rawComments
     val rebuilt = withContext(itemDispatcher) {
       comments.asSequence()
-        .filter { density >= 1f || stableSample(it.id) < density }
+        .filter { it.text.isNotBlank() }
         .filterNot { comment -> blocked.any { it.matches(comment.text) } }
         .mapNotNull { comment ->
-          val timeMillis = ((comment.timeSeconds + selected.serverShiftSeconds + offsetSeconds) * 1_000.0)
+          val timeMillis = ((comment.timeSeconds + selected.serverShiftSeconds) * 1_000.0)
             .roundToLong()
           if (timeMillis < 0L) return@mapNotNull null
           DanmakuItem(
@@ -508,17 +514,12 @@ class DanmakuCoordinator(
           )
         }
         .sortedWith(compareBy<DanmakuItem> { it.timeMillis }.thenBy { it.id })
+        .take(MAX_MATERIALIZED_COMMENTS)
         .toList()
     }
     currentCoroutineContext().ensureActive()
-    if (generation.get() != sessionToken || itemGeneration.get() != rebuildToken) return
+    if (generation.get() != sessionToken) return
     _items.value = rebuilt
-  }
-
-  private fun cancelItemRebuild() {
-    itemGeneration.incrementAndGet()
-    rebuildJob?.cancel()
-    rebuildJob = null
   }
 
   private fun keywordFilters(): List<KeywordFilter> {
@@ -557,7 +558,6 @@ class DanmakuCoordinator(
   private fun launchSession(block: suspend (Long) -> Unit) {
     val token = generation.incrementAndGet()
     sessionJob?.cancel()
-    cancelItemRebuild()
     sessionJob = scope.launch {
       try {
         block(token)
@@ -598,9 +598,7 @@ class DanmakuCoordinator(
     generation.incrementAndGet()
     sessionJob?.cancel()
     sessionJob = null
-    cancelItemRebuild()
     _items.value = emptyList()
-    rawComments = emptyList()
     _state.update {
       it.copy(
         enabled = false,
@@ -670,11 +668,12 @@ class DanmakuCoordinator(
     opacity = _state.value.opacity,
     fontSizeSp = _state.value.fontSize,
     speed = _state.value.speed,
-    density = 1f,
+    density = _state.value.density,
     displayArea = _state.value.displayArea,
     maxOnScreen = preferences.maxOnScreen.get(),
     fixedDurationMillis = (preferences.fixedDurationSeconds.get() * 1_000f).roundToLong(),
     strokeWidthDp = preferences.outlineWidth.get(),
+    timeOffsetMillis = _state.value.offsetMillis,
   )
 
   private fun updateRenderConfig() {
@@ -729,5 +728,6 @@ class DanmakuCoordinator(
       "Accept the dandanplay privacy notice in Settings before enabling danmaku"
     private const val CREDENTIALS_MISSING_MESSAGE =
       "This build has no dandanplay AppId/AppSecret configured"
+    private const val MAX_MATERIALIZED_COMMENTS = 50_000
   }
 }

@@ -312,7 +312,7 @@ class DanmakuCoordinatorTest {
           assertEquals(listOf(101L), coordinator.items.value.map { it.id })
 
           val gate = itemDispatcher.gateNextDispatch()
-          coordinator.setOffset(5_000L)
+          coordinator.refresh()
           withTimeout(10_000) { gate.entered.await() }
           coordinator.clearMedia()
           gate.release.complete(Unit)
