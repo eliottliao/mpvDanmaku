@@ -30,11 +30,9 @@ jobs:
         run: ./gradlew test
 
   build:
-    name: Build (${{ matrix.abi }})
+    name: Build
+    needs: test
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        abi: [arm64-v8a, armeabi-v7a, universal, x86, x86_64]
 
     steps:
       - name: Checkout repo
@@ -60,9 +58,9 @@ jobs:
           DANDANPLAY_APP_ID: ${{ secrets.DANDANPLAY_APP_ID }}
           DANDANPLAY_APP_SECRET: ${{ secrets.DANDANPLAY_APP_SECRET }}
 
-      - name: Upload app-${{ matrix.abi }} Artifact
+      - name: Upload APK Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: mpvDanmaku-standard-${{ matrix.abi }}-release-unsigned-${{ env.SHORT_SHA }}
-          path: app/build/outputs/apk/standard/release/app-standard-${{ matrix.abi }}-release-unsigned.apk
-          if-no-files-found: warn
+          name: mpvDanmaku-standard-release-unsigned-${{ env.SHORT_SHA }}
+          path: app/build/outputs/apk/standard/release/app-standard-*-release-unsigned.apk
+          if-no-files-found: error

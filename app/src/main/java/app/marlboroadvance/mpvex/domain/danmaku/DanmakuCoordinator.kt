@@ -85,10 +85,29 @@ class DanmakuCoordinator(
   private var selectableEpisodes: Map<Long, Selection> = emptyMap()
   private var loadedComments: List<RemoteDanmakuComment>? = null
 
-  /** anime title + episode of the last search request that actually succeeded. */
   private var lastSearchParams: Pair<String, String?>? = null
 
   init {
+    scope.launch {
+      val preferenceFlows = listOf<kotlinx.coroutines.flow.Flow<Any>>(
+        preferences.enabled.changes(),
+        preferences.showScrolling.changes(),
+        preferences.showTop.changes(),
+        preferences.showBottom.changes(),
+        preferences.opacity.changes(),
+        preferences.fontSize.changes(),
+        preferences.speed.changes(),
+        preferences.density.changes(),
+        preferences.displayArea.changes(),
+        preferences.maxOnScreen.changes(),
+        preferences.outlineWidth.changes(),
+        preferences.fixedDurationSeconds.changes(),
+      )
+      kotlinx.coroutines.flow.combine(preferenceFlows) { _ -> }
+        .collect {
+          refreshPreferenceState()
+        }
+    }
     scope.launch {
       kotlinx.coroutines.flow.combine(
         preferences.blockedKeywords.changes(),
@@ -109,6 +128,7 @@ class DanmakuCoordinator(
     durationSeconds: Double,
   ) {
     activeMedia = ActiveMedia(uri, fileName, durationSeconds)
+    fingerprint = null
     loadedComments = null
     refreshPreferenceState()
     if (!preferences.enabled.get()) {
@@ -243,15 +263,15 @@ class DanmakuCoordinator(
 
   /**
    * Derives (anime title, episode) for a manual search query. The title always prefers
-   * the user input; the episode falls back to the current file name when the query
-   * itself carries no episode information.
+   * the user input; the episode falls back to the current file name only when the query
+   * itself carries no episode information and is blank or matches the active media.
    */
   private fun buildSearchParams(query: String): Pair<String, String?> {
     val info = runCatching { MediaInfoParser.parse(query) }.getOrNull()
     val queryEpisode = info?.takeIf { looksLikeMediaFileName(query) }?.episode
     val anime = info?.title?.takeIf { it.isNotBlank() }?.trim() ?: query
     var episode = queryEpisode
-    if (episode == null) {
+    if (episode == null && query.isBlank()) {
       val fileName = activeMedia?.fileName
       if (!fileName.isNullOrBlank()) {
         episode = runCatching { MediaInfoParser.parse(fileName) }.getOrNull()?.episode
@@ -565,17 +585,10 @@ class DanmakuCoordinator(
     _items.value = rebuilt
   }
 
-  private fun stableSample(id: Long): Float {
-    var value = id
-    value = (value xor (value ushr 33)) * -49064778989728563L
-    value = (value xor (value ushr 33)) * -4265267296055464877L
-    value = value xor (value ushr 33)
-    return ((value ushr 40) and 0xFFFFFF).toFloat() / 0x1000000.toFloat()
-  }
-
   private fun launchSession(block: suspend (Long) -> Unit) {
     val token = generation.incrementAndGet()
     sessionJob?.cancel()
+    _state.update { it.copy(isSearching = false, isRefreshing = false) }
     sessionJob = scope.launch {
       try {
         block(token)

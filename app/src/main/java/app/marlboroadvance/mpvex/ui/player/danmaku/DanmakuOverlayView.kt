@@ -77,6 +77,7 @@ class DanmakuOverlayView @JvmOverloads constructor(
   private var geoLaneHeight = 0f
   private var geoLaneCount = 0
   private var laneBaselines = FloatArray(0)
+  private var bottomLaneBaselines = FloatArray(0)
   private var hasValidGeometry = false
 
   private var framePosted = false
@@ -352,10 +353,18 @@ class DanmakuOverlayView @JvmOverloads constructor(
     entry: RenderEntry,
     effectivePosition: Long,
   ) {
-    val baseline = if (entry.lane in laneBaselines.indices) {
-      laneBaselines[entry.lane]
+    val baseline = if (entry.item.mode == DanmakuMode.BOTTOM) {
+      if (entry.lane in bottomLaneBaselines.indices) {
+        bottomLaneBaselines[entry.lane]
+      } else {
+        (height - paddingBottom).toFloat() - (geoLaneCount - entry.lane) * geoLaneHeight - fontTop
+      }
     } else {
-      geoTop + entry.lane * geoLaneHeight - fontTop
+      if (entry.lane in laneBaselines.indices) {
+        laneBaselines[entry.lane]
+      } else {
+        geoTop + entry.lane * geoLaneHeight - fontTop
+      }
     }
     val x = when (entry.item.mode) {
       DanmakuMode.SCROLLING -> geoRight -
@@ -465,10 +474,13 @@ class DanmakuOverlayView @JvmOverloads constructor(
 
     if (laneBaselines.size != laneCount) {
       laneBaselines = FloatArray(laneCount)
+      bottomLaneBaselines = FloatArray(laneCount)
     }
+    val contentBottom = (height - paddingBottom).toFloat()
     var lane = 0
     while (lane < laneCount) {
       laneBaselines[lane] = geoTop + lane * geoLaneHeight - fontTop
+      bottomLaneBaselines[lane] = contentBottom - (laneCount - lane) * geoLaneHeight - fontTop
       lane++
     }
     hasValidGeometry = true

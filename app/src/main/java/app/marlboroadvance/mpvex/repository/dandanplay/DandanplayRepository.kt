@@ -31,9 +31,14 @@ class DandanplayRepository(
   private val transport: DandanplayTransport,
   private val commentCache: DanmakuCacheStore,
 ) {
+  private data class InflightRequest(
+    val deferred: Deferred<DandanplayCommentsResult>,
+    val isForced: Boolean,
+  )
+
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
   private val inflightMutex = Mutex()
-  private val inflightRequests = mutableMapOf<String, Deferred<DandanplayCommentsResult>>()
+  private val inflightRequests = mutableMapOf<String, InflightRequest>()
   private val lastManualRefreshEpochMillis = mutableMapOf<Long, Long>()
 
   suspend fun match(query: DandanplayMatchQuery): DandanplayMatchResult {
@@ -106,19 +111,31 @@ class DandanplayRepository(
   ): DandanplayCommentsResult {
     validateCommentQuery(query)
     val cacheKey = commentCache.cacheKey(query)
-    // Concurrent requests for the same cache key share a single in-flight fetch.
     val deferred = inflightMutex.withLock {
       // A manual refresh inside its cooldown degrades to a plain cache read.
       val effectiveForceRefresh = forceRefresh && !isInManualRefreshCooldown(query.episodeId)
-      inflightRequests.getOrPut(cacheKey) {
-        scope.async {
-          try {
-            fetchComments(query, effectiveForceRefresh)
-          } finally {
-            inflightMutex.withLock { inflightRequests.remove(cacheKey) }
+      val existing = inflightRequests[cacheKey]
+      if (existing != null) {
+        if (!effectiveForceRefresh || existing.isForced) {
+          return@withLock existing.deferred
+        }
+        existing.deferred.cancel()
+      }
+
+      lateinit var newDeferred: Deferred<DandanplayCommentsResult>
+      newDeferred = scope.async {
+        try {
+          fetchComments(query, effectiveForceRefresh)
+        } finally {
+          inflightMutex.withLock {
+            if (inflightRequests[cacheKey]?.deferred === newDeferred) {
+              inflightRequests.remove(cacheKey)
+            }
           }
         }
       }
+      inflightRequests[cacheKey] = InflightRequest(newDeferred, effectiveForceRefresh)
+      newDeferred
     }
     return deferred.await()
   }

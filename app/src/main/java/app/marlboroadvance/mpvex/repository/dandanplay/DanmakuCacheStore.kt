@@ -75,7 +75,8 @@ class DanmakuCacheStore(
       // Two consecutive fetches without change: extend the TTL along the ladder.
       previous != null && previous.commentCount == commentCount && previous.maxCid == maxCid -> {
         unchangedFetches = previous.unchangedFetches + 1
-        ttlMillis = TTL_LADDER_MILLIS[unchangedFetches.coerceAtMost(TTL_LADDER_MILLIS.lastIndex)]
+        val ladderIndex = (unchangedFetches - 1).coerceIn(0, TTL_LADDER_MILLIS.lastIndex)
+        ttlMillis = TTL_LADDER_MILLIS[ladderIndex]
       }
       // A growing comment library should be re-validated quickly.
       previous != null &&
@@ -122,14 +123,27 @@ class DanmakuCacheStore(
 
   private suspend fun evictOldestIfNeeded(protectedKey: String) {
     val entries = dao.getCacheMetadataOldestFirst()
-    var totalBytes = entries.sumOf { it.fileSize }
-    if (totalBytes <= MAX_TOTAL_BYTES) return
+    var totalBytes = 0L
+    val validEntries = ArrayList<DanmakuCacheEntity>(entries.size)
     for (entry in entries) {
+      val diskSize = diskCache.sizeOfFile(entry.fileName)
+      if (diskSize <= 0L) {
+        // Orphaned Room row where Android wiped the cacheDir file; clean up
+        runCatching { dao.deleteCacheMetadata(entry.cacheKey) }
+      } else {
+        totalBytes += maxOf(entry.fileSize, diskSize)
+        validEntries += entry
+      }
+    }
+    if (totalBytes <= MAX_TOTAL_BYTES) return
+
+    for (entry in validEntries) {
       if (totalBytes <= MAX_TOTAL_BYTES) break
       if (entry.cacheKey == protectedKey) continue
+      val diskSize = diskCache.sizeOfFile(entry.fileName)
       runCatching { diskCache.deleteFile(entry.fileName) }
       runCatching { dao.deleteCacheMetadata(entry.cacheKey) }
-      totalBytes -= entry.fileSize
+      totalBytes -= maxOf(entry.fileSize, diskSize)
     }
   }
 

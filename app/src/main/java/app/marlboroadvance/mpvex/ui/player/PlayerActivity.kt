@@ -34,7 +34,9 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.documentfile.provider.DocumentFile
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import app.marlboroadvance.mpvex.database.entities.PlaybackStateEntity
 import app.marlboroadvance.mpvex.databinding.PlayerLayoutBinding
 import app.marlboroadvance.mpvex.domain.playbackstate.repository.PlaybackStateRepository
@@ -502,24 +504,28 @@ class PlayerActivity :
    */
   private fun setupDanmakuOverlay() {
     lifecycleScope.launch {
-      viewModel.danmaku.items.collect { items ->
-        binding.danmakuOverlay.setDanmakuItems(items)
-        updateDanmakuOverlayVisibility()
-      }
-    }
-    lifecycleScope.launch {
-      viewModel.danmaku.renderConfig.collect { config ->
-        binding.danmakuOverlay.setRenderConfig(config)
-        updateDanmakuOverlayVisibility()
-      }
-    }
-    lifecycleScope.launch {
-      viewModel.danmakuClock.collect { clock ->
-        binding.danmakuOverlay.updateClock(
-          positionMillis = clock.positionMillis,
-          isPlaying = clock.isPlaying,
-          playbackSpeed = clock.playbackSpeed,
-        )
+      repeatOnLifecycle(Lifecycle.State.STARTED) {
+        launch {
+          viewModel.danmaku.items.collect { items ->
+            binding.danmakuOverlay.setDanmakuItems(items)
+            updateDanmakuOverlayVisibility()
+          }
+        }
+        launch {
+          viewModel.danmaku.renderConfig.collect { config ->
+            binding.danmakuOverlay.setRenderConfig(config)
+            updateDanmakuOverlayVisibility()
+          }
+        }
+        launch {
+          viewModel.danmakuClock.collect { clock ->
+            binding.danmakuOverlay.updateClock(
+              positionMillis = clock.positionMillis,
+              isPlaying = clock.isPlaying,
+              playbackSpeed = clock.playbackSpeed,
+            )
+          }
+        }
       }
     }
   }

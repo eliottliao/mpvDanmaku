@@ -133,6 +133,12 @@ class RawCommentDiskCache(
   /** Disk size of the cache entry for a query, or 0 when the file is missing. */
   fun sizeOf(query: DandanplayCommentQuery): Long = cacheFile(query).takeIf { it.isFile }?.length() ?: 0L
 
+  /** Disk size of a cached file by name, or 0 when the file is missing. */
+  fun sizeOfFile(fileName: String): Long {
+    if (fileName.isEmpty() || fileName.contains('/') || fileName.contains('\\')) return 0L
+    return File(directory, fileName).takeIf { it.isFile }?.length() ?: 0L
+  }
+
   internal fun cacheFile(query: DandanplayCommentQuery): File {
     val related = if (query.withRelated) 1 else 0
     val conversion = query.chineseConversion.apiValue

@@ -94,6 +94,30 @@ class DandanplayRepositoryTest {
   }
 
   @Test
+  fun `forceRefresh cancels in-flight non-forced fetch and concurrent non-forced joins forced fetch`() = runBlocking {
+    transport.commentsResponse = commentsResponse(
+      DandanplayCommentDto(cid = 1L, p = "1.0,1,0,1", m = "initial"),
+    )
+    transport.commentsGate = CompletableDeferred()
+
+    val nonForced = async(Dispatchers.Unconfined) { repository.getComments(query, forceRefresh = false) }
+
+    // Trigger forced refresh while nonForced is in-flight
+    val forced = async(Dispatchers.Unconfined) { repository.getComments(query, forceRefresh = true) }
+
+    // Trigger subsequent non-forced caller while forced is in-flight
+    val subsequent = async(Dispatchers.Unconfined) { repository.getComments(query, forceRefresh = false) }
+
+    transport.commentsGate!!.complete(Unit)
+
+    val forcedResult = withTimeout(10_000) { forced.await() }
+    val subsequentResult = withTimeout(10_000) { subsequent.await() }
+
+    assertEquals(DandanplayCommentSource.NETWORK, forcedResult.source)
+    assertEquals(forcedResult, subsequentResult)
+  }
+
+  @Test
   fun `fresh cache short-circuits the network`() = runBlocking {
     transport.commentsResponse = commentsResponse(
       DandanplayCommentDto(cid = 1L, p = "1.0,1,0,1", m = "cached"),

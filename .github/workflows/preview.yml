@@ -55,7 +55,8 @@ jobs:
           fi
           
           echo "${{ secrets.MPVDANMAKU_SIGNING_KEYSTORE }}" | base64 -d > release.keystore
-          
+          trap 'rm -f release.keystore' EXIT
+
           sign_apk() {
             local apk="$1"
             local signed_apk="${apk/-unsigned/}"

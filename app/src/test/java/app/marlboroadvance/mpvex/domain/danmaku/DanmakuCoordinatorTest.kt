@@ -328,6 +328,74 @@ class DanmakuCoordinatorTest {
   }
 
   @Test
+  fun `openMedia clears fingerprint immediately preventing mutation of previous binding`() = runBlocking {
+    val tempDir = Files.createTempDirectory("danmaku-fingerprint-test").toFile()
+    try {
+      val dao = FakeDanmakuDao()
+      val transport = FakeDandanplayTransport()
+      val repository = DandanplayRepository(
+        transport = transport,
+        commentCache = DanmakuCacheStore(RawCommentDiskCache(tempDir), dao),
+      )
+      val fingerprintStarted = CompletableDeferred<Unit>()
+      val fingerprintGate = CompletableDeferred<Unit>()
+      val fingerprintProvider = mock<MediaFingerprintProvider>()
+      whenever(
+        fingerprintProvider.fingerprint(
+          uri = any<Uri>(),
+          fallbackFileName = anyOrNull<String>(),
+          durationSeconds = any<Double>(),
+          allowContentHash = any<Boolean>(),
+        ),
+      ).thenAnswer {
+        fingerprintStarted.complete(Unit)
+        runBlocking { fingerprintGate.await() }
+        fingerprint("key-ep2", "Ep2")
+      }
+      val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+      val bindingRepo = DanmakuBindingRepository(dao)
+      val coordinator = DanmakuCoordinator(
+        repository,
+        fingerprintProvider,
+        bindingRepo,
+        enabledPreferences(),
+        scope,
+      )
+
+      // Save an existing binding for Ep1
+      bindingRepo.save(
+        mediaKey = "key-ep1",
+        episodeId = 1L,
+        animeId = 1L,
+        animeTitle = "Anime",
+        episodeTitle = "01",
+        matchSource = DanmakuMatchSource.MANUAL,
+        serverShiftSeconds = 0.0,
+        fileHash = null,
+        fileSize = 100L,
+      )
+
+      // Open new media Ep2 (whose fingerprint calculation is paused on fingerprintGate)
+      coordinator.openMedia(mock<Uri>(), "Ep2.mkv", 60.0)
+      withTimeout(10_000) {
+        fingerprintStarted.await()
+      }
+
+      // Adjust offset while Ep2 fingerprint is still computing
+      coordinator.setOffset(5000L)
+
+      // Verify Ep1 userOffset was NOT mutated to 5.0
+      val ep1Binding = dao.getBinding("key-ep1")
+      assertEquals(0.0, ep1Binding!!.userOffsetSeconds, 0.001)
+
+      fingerprintGate.complete(Unit)
+      scope.cancel()
+    } finally {
+      tempDir.deleteRecursively()
+    }
+  }
+
+  @Test
   fun `comments matching blocked words are filtered during loading`() = runBlocking {
     val tempDir = Files.createTempDirectory("danmaku-filter-load-test").toFile()
     try {

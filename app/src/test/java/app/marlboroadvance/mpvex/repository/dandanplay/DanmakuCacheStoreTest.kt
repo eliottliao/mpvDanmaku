@@ -72,24 +72,29 @@ class DanmakuCacheStoreTest {
 
     val second = put(1L, 3L)
     assertEquals(1, second!!.unchangedFetches)
-    assertEquals(now + 24 * hour, second.expiresAt)
+    assertEquals(now + 6 * hour, second.expiresAt)
 
     val third = put(1L, 3L)
     assertEquals(2, third!!.unchangedFetches)
-    assertEquals(now + 3 * day, third.expiresAt)
+    assertEquals(now + 24 * hour, third.expiresAt)
 
     val fourth = put(1L, 3L)
     assertEquals(3, fourth!!.unchangedFetches)
-    assertEquals(now + 7 * day, fourth.expiresAt)
+    assertEquals(now + 3 * day, fourth.expiresAt)
 
     val fifth = put(1L, 3L)
     assertEquals(4, fifth!!.unchangedFetches)
-    assertEquals("ladder must cap at the last rung", now + 7 * day, fifth.expiresAt)
+    assertEquals(now + 7 * day, fifth.expiresAt)
+
+    val sixth = put(1L, 3L)
+    assertEquals(5, sixth!!.unchangedFetches)
+    assertEquals("ladder must cap at the last rung", now + 7 * day, sixth.expiresAt)
   }
 
   @Test
   fun `growing comment library resets the ladder to one hour`() {
     put(1L, 3L)
+    put(1L, 3L) // unchanged -> 6h rung
     put(1L, 3L) // unchanged -> 24h rung
 
     val grown = put(1L, 5L)
@@ -206,6 +211,23 @@ class DanmakuCacheStoreTest {
     assertTrue(freed > 0L)
     assertTrue(dao.cacheRows.isEmpty())
     assertNull(store.get(query(1L)))
+  }
+
+  @Test
+  fun `eviction cleans up orphaned Room rows when cache files were wiped from disk`() = runBlocking {
+    store.put(query(1L), response(1L))
+    store.put(query(2L), response(1L))
+
+    // Manually delete file 1 from disk to simulate OS cache wipe
+    val file1 = File(tempDir, "danmaku/comments/${store.cacheKey(query(1L))}")
+    file1.delete()
+
+    // Put new entry to trigger eviction check
+    store.put(query(3L), response(1L))
+
+    assertFalse("orphaned DB row must be cleaned up", dao.cacheRows.containsKey(store.cacheKey(query(1L))))
+    assertTrue(dao.cacheRows.containsKey(store.cacheKey(query(2L))))
+    assertTrue(dao.cacheRows.containsKey(store.cacheKey(query(3L))))
   }
 
   private fun inflate(cacheKey: String, fileSize: Long) {

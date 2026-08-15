@@ -18,7 +18,6 @@ import androidx.compose.material.icons.outlined.Title
 import androidx.compose.material.icons.outlined.Flip
 import androidx.compose.material.icons.outlined.Repeat
 import androidx.compose.material.icons.outlined.Autorenew
-import androidx.compose.material.icons.outlined.Segment
 import androidx.compose.material.icons.outlined.ZoomIn
 import androidx.compose.material.icons.outlined.FastForward
 import androidx.compose.material.icons.outlined.Shuffle
@@ -28,6 +27,8 @@ import androidx.compose.material.icons.outlined.Headset
 import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
+import app.marlboroadvance.mpvex.R
 
 /**
  * Represents a customizable button in the player controls.
@@ -93,7 +94,7 @@ fun getPlayerButtonLabel(button: PlayerButton): String =
     PlayerButton.LOCK_CONTROLS -> "Lock Controls" // stringResource(R.string.btn_label_lock)
     PlayerButton.AUDIO_TRACK -> "Audio Track" // stringResource(R.string.btn_label_audio)
     PlayerButton.SUBTITLES -> "Subtitles" // stringResource(R.string.btn_label_subtitles)
-    PlayerButton.DANMAKU -> "Danmaku"
+    PlayerButton.DANMAKU -> stringResource(R.string.player_danmaku_title)
     PlayerButton.MORE_OPTIONS -> "More Options" // stringResource(R.string.btn_label_more)
     PlayerButton.CURRENT_CHAPTER -> "Current Chapter" // stringResource(R.string.btn_label_chapter)
     PlayerButton.REPEAT_MODE -> "Repeat Mode" // stringResource(R.string.btn_label_repeat_mode)
