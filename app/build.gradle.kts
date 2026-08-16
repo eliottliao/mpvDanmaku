@@ -89,9 +89,33 @@ android {
     }
   }
 
+  signingConfigs {
+    create("release") {
+      val ksFile = configurationValue("KEYSTORE_FILE") ?: configurationValue("RELEASE_STORE_FILE") ?: "release.jks"
+      val ksPass = configurationValue("KEYSTORE_PASSWORD") ?: configurationValue("MPVDANMAKU_SIGNING_STORE_PASSWORD")
+      val kAlias = configurationValue("KEY_ALIAS") ?: configurationValue("MPVDANMAKU_SIGNING_KEY_ALIAS")
+      val kPass = configurationValue("KEY_PASSWORD") ?: configurationValue("MPVDANMAKU_KEY_PASSWORD") ?: ksPass
+
+      if (!ksPass.isNullOrEmpty() && !kAlias.isNullOrEmpty()) {
+        val f = rootProject.file(ksFile)
+        if (f.exists()) {
+          storeFile = f
+          storePassword = ksPass
+          keyAlias = kAlias
+          keyPassword = kPass
+        }
+      }
+    }
+  }
+
   buildTypes {
     named("release") {
-      signingConfig = signingConfigs.getByName("debug")
+      val releaseSigning = signingConfigs.findByName("release")
+      if (releaseSigning?.storeFile != null) {
+        signingConfig = releaseSigning
+      } else {
+        signingConfig = signingConfigs.getByName("debug")
+      }
       isMinifyEnabled = true
       isShrinkResources = true
       proguardFiles(
