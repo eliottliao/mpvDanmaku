@@ -2679,7 +2679,7 @@ class PlayerActivity :
               }
 
               override fun onSeekTo(pos: Long) {
-                viewModel.seekTo((pos / 1000).toInt())
+                viewModel.seekTo(pos / 1000.0, exact = true)
                 updateMediaSessionPlaybackState(isPlaying = viewModel.paused == false)
               }
             },

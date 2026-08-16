@@ -891,30 +891,41 @@ fun PlayerControls(
           val invertDuration by playerPreferences.invertDuration.collectAsState()
           val seekbarStyle by appearancePreferences.seekbarStyle.collectAsState()
           var wasPlayerAlreadyPaused by remember { mutableStateOf(false) }
+          var isDragging by remember { mutableStateOf(false) }
 
           SeekbarWithTimers(
             position = precisePosition,
             duration = if (preciseDuration > 0) preciseDuration else duration?.toFloat() ?: 0f,
-            onValueChange = {
-              if (!isSeeking) {
-                // First drag frame - pause playback
-                wasPlayerAlreadyPaused = paused ?: false
-                if (!wasPlayerAlreadyPaused) {
-                  viewModel.pause()
+            onSeek = { targetPos, dragging ->
+              if (dragging) {
+                if (!isDragging) {
+                  // First drag frame - pause playback for smooth scrubbing
+                  wasPlayerAlreadyPaused = paused ?: false
+                  if (!wasPlayerAlreadyPaused) {
+                    viewModel.pause()
+                  }
+                  isDragging = true
+                }
+                isSeeking = true
+                resetControlsTimestamp = System.currentTimeMillis()
+                // While dragging: fast keyframe preview
+                viewModel.seekTo(targetPos, exact = false)
+              } else {
+                if (isDragging) {
+                  // Drag finished - commit final exact seek and restore playback if needed
+                  isDragging = false
+                  isSeeking = false
+                  resetControlsTimestamp = System.currentTimeMillis()
+                  viewModel.seekTo(targetPos, exact = true, unpauseAfter = !wasPlayerAlreadyPaused)
+                  viewModel.showControls()
+                } else {
+                  // Single tap/click - direct exact seek without pause/unpause cycle
+                  viewModel.seekTo(targetPos, exact = true)
+                  isSeeking = false
+                  resetControlsTimestamp = System.currentTimeMillis()
+                  viewModel.showControls()
                 }
               }
-              isSeeking = true
-              resetControlsTimestamp = System.currentTimeMillis()
-              viewModel.seekTo(it.toInt())
-            },
-            onValueChangeFinished = {
-              isSeeking = false
-              resetControlsTimestamp = System.currentTimeMillis()
-              // Unpause if it wasn't paused before seeking
-              if (!wasPlayerAlreadyPaused) {
-                viewModel.unpause()
-              }
-              viewModel.showControls()
             },
             timersInverted = Pair(false, invertDuration),
             durationTimerOnCLick = {

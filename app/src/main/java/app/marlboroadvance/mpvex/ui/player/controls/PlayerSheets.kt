@@ -343,7 +343,7 @@ fun PlayerSheets(
         onPause = viewModel::pause,
         onUnpause = viewModel::unpause,
         onPauseUnpause = viewModel::pauseUnpause,
-        onSeekTo = { position, _ -> viewModel.seekTo(position) },
+        onSeekTo = { position, isCommit -> viewModel.seekTo(position, exact = isCommit) },
         onDismissRequest = onDismissRequest,
       )
     }

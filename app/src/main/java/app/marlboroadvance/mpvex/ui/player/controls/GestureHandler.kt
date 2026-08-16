@@ -812,6 +812,7 @@ fun GestureHandler(
           var gestureType: String? = null
           var hasStartedSeeking = false
           var initialVideoPosition = 0f
+          var lastClampedPosition = 0f
           var wasPlayerAlreadyPaused = false
           // Use the sensitivity preference instead of hardcoded value
           val seekSensitivity = horizontalSwipeSensitivity
@@ -841,6 +842,7 @@ fun GestureHandler(
                     gestureType = "horizontal_seek"
                     hasStartedSeeking = true
                     initialVideoPosition = position?.toFloat() ?: 0f
+                    lastClampedPosition = initialVideoPosition
                     
                     // Pause before seeking to prevent decoder stalls
                     wasPlayerAlreadyPaused = paused ?: false
@@ -859,10 +861,11 @@ fun GestureHandler(
                     val targetPosition = (initialVideoPosition + seekAmount).coerceAtLeast(0f)
                     val maxDuration = duration?.toFloat() ?: 0f
                     val clampedPosition = targetPosition.coerceAtMost(maxDuration)
+                    lastClampedPosition = clampedPosition
                     
                     // Use the same seeking mechanism as seekbar scrubbing
                     // This will update the seekbar position and provide live preview
-                    viewModel.seekTo(clampedPosition.toInt())
+                    viewModel.seekTo(clampedPosition, exact = false)
                     
                     // Format and display time position updates
                     val currentPos = clampedPosition.toInt()
@@ -900,6 +903,8 @@ fun GestureHandler(
 
           // Apply the final seek when gesture ends
           if (hasStartedSeeking) {
+            viewModel.seekTo(lastClampedPosition, exact = true)
+
             // Unpause if it wasn't paused before seeking
             if (!wasPlayerAlreadyPaused) {
               viewModel.unpause()

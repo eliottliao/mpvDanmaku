@@ -141,7 +141,7 @@ class MPVView(
     MPVLib.setOptionString("vd-lavc-film-grain", "cpu")
 
     val preciseSeek = playerPreferences.usePreciseSeeking.get()
-    MPVLib.setOptionString("hr-seek", if (preciseSeek) "yes" else "no")
+    MPVLib.setOptionString("hr-seek", "default")
     MPVLib.setOptionString("hr-seek-framedrop", if (preciseSeek) "no" else "yes")
 
     // Anime4K shader initialization (MUST be in initOptions, not after file load!)
