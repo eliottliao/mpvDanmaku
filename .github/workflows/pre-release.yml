@@ -6,7 +6,7 @@ permissions:
 on:
   push:
     tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+-preview.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-preview*'
 
 jobs:
   release-for-github:
@@ -82,9 +82,8 @@ jobs:
           
           preview_apks=("$PREVIEW_DIR"/app-standard-*-preview-unsigned.apk)
           if [ ! -e "${preview_apks[0]}" ]; then
-            echo "No unsigned preview APK files found"
+            echo "No unsigned preview APK files found to sign"
             ls -lah "$PREVIEW_DIR"
-            rm -f release.keystore
             exit 1
           fi
           
@@ -92,7 +91,6 @@ jobs:
             sign_apk "$apk"
           done
           
-          rm -f release.keystore
           ls -lh "$PREVIEW_DIR"/app-standard-*-preview.apk
 
       - name: Copy built artifacts

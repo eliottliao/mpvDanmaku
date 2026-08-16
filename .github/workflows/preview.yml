@@ -76,9 +76,8 @@ jobs:
           
           preview_apks=("$PREVIEW_DIR"/app-standard-*-preview-unsigned.apk)
           if [ ! -e "${preview_apks[0]}" ]; then
-            echo "No unsigned preview APK files found"
+            echo "No unsigned preview APK files found to sign"
             ls -lah "$PREVIEW_DIR"
-            rm -f release.keystore
             exit 1
           fi
           
@@ -86,7 +85,6 @@ jobs:
             sign_apk "$apk"
           done
           
-          rm -f release.keystore
           ls -lh "$PREVIEW_DIR"/app-standard-*-preview.apk
 
       - name: Copy build artifacts

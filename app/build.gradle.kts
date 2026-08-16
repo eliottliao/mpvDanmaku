@@ -114,7 +114,7 @@ android {
       if (releaseSigning?.storeFile != null) {
         signingConfig = releaseSigning
       } else {
-        signingConfig = signingConfigs.getByName("debug")
+        signingConfig = null
       }
       isMinifyEnabled = true
       isShrinkResources = true

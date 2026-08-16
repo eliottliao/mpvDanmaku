@@ -7,7 +7,6 @@ on:
   push:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
-      - 'v[0-9]+.[0-9]+.[0-9]+-*'
 
 jobs:
   release-for-github:
@@ -118,9 +117,8 @@ jobs:
           # Sign standard APKs
           standard_apks=("$STANDARD_RELEASE_DIR"/app-standard-*-release-unsigned.apk)
           if [ ! -e "${standard_apks[0]}" ]; then
-            echo "No unsigned standard APK files found"
+            echo "No unsigned standard APK files found to sign"
             ls -lah "$STANDARD_RELEASE_DIR"
-            rm -f release.keystore
             exit 1
           fi
           for apk in "${standard_apks[@]}"; do
@@ -130,9 +128,8 @@ jobs:
           # Sign Play Store APK (universal only)
           PLAYSTORE_APK="$PLAYSTORE_RELEASE_DIR/app-playstore-universal-release-unsigned.apk"
           if [ ! -f "$PLAYSTORE_APK" ]; then
-            echo "No unsigned Play Store universal APK found"
+            echo "No unsigned Play Store universal APK found to sign"
             ls -lah "$PLAYSTORE_RELEASE_DIR"
-            rm -f release.keystore
             exit 1
           fi
           sign_apk "$PLAYSTORE_APK"
@@ -140,16 +137,14 @@ jobs:
           # Sign F-Droid APKs
           fdroid_apks=("$FDROID_RELEASE_DIR"/app-fdroid-*-release-unsigned.apk)
           if [ ! -e "${fdroid_apks[0]}" ]; then
-            echo "No unsigned F-Droid APK files found"
+            echo "No unsigned F-Droid APK files found to sign"
             ls -lah "$FDROID_RELEASE_DIR"
-            rm -f release.keystore
             exit 1
           fi
           for apk in "${fdroid_apks[@]}"; do
             sign_apk "$apk"
           done
           
-          rm -f release.keystore
           echo "Standard APKs:"
           ls -lh "$STANDARD_RELEASE_DIR"/app-standard-*-release.apk
           echo "Play Store APK:"
