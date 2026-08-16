@@ -114,7 +114,7 @@ object PreferencesScreen : Screen {
           
           // UI & Appearance Section
           item {
-            PreferenceSectionHeader(title = "UI & Appearance")
+            PreferenceSectionHeader(title = stringResource(R.string.pref_category_ui_appearance))
           }
           
           item {
@@ -162,7 +162,7 @@ object PreferencesScreen : Screen {
           
           // Playback & Controls Section
           item {
-            PreferenceSectionHeader(title = "Playback & Controls")
+            PreferenceSectionHeader(title = stringResource(R.string.pref_category_playback_controls))
           }
           
           item {
@@ -211,7 +211,7 @@ object PreferencesScreen : Screen {
           
           // File Management Section
           item {
-            PreferenceSectionHeader(title = "File Management")
+            PreferenceSectionHeader(title = stringResource(R.string.pref_category_file_management))
           }
           
           item {
@@ -239,7 +239,7 @@ object PreferencesScreen : Screen {
           
           // Media Settings Section
           item {
-            PreferenceSectionHeader(title = "Media Settings")
+            PreferenceSectionHeader(title = stringResource(R.string.pref_category_media_settings))
           }
           
           item {
@@ -287,10 +287,10 @@ object PreferencesScreen : Screen {
               PreferenceDivider()
 
               Preference(
-                title = { Text(text = "Danmaku") },
+                title = { Text(text = stringResource(R.string.pref_danmaku_title)) },
                 summary = {
                   Text(
-                    text = "Match and display comments from the dandanplay open danmaku network",
+                    text = stringResource(R.string.pref_danmaku_summary),
                     color = MaterialTheme.colorScheme.outline,
                   )
                 },
@@ -329,7 +329,7 @@ object PreferencesScreen : Screen {
           
           // Advanced & About Section
           item {
-            PreferenceSectionHeader(title = "Advanced & About")
+            PreferenceSectionHeader(title = stringResource(R.string.pref_category_advanced_about))
           }
           
           item {

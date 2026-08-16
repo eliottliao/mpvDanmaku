@@ -94,7 +94,7 @@ object AboutScreen : Screen {
     // Show toast when no update is available after manual check (only if update feature is enabled)
     LaunchedEffect(updateState) {
         if (BuildConfig.ENABLE_UPDATE_FEATURE && updateViewModel != null && updateState is UpdateViewModel.UpdateState.NoUpdate) {
-            Toast.makeText(context, "Already using latest version", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, context.getString(R.string.about_already_latest), Toast.LENGTH_SHORT).show()
             updateViewModel.dismissNoUpdate()
         }
     }
@@ -302,7 +302,7 @@ object AboutScreen : Screen {
 
         // Updates Section (only show if update feature is enabled)
         if (BuildConfig.ENABLE_UPDATE_FEATURE && updateViewModel != null) {
-          PreferenceSectionHeader(title = "Updates")
+          PreferenceSectionHeader(title = stringResource(R.string.pref_category_updates))
           PreferenceCard {
                 val isAutoUpdateEnabled by updateViewModel.isAutoUpdateEnabled.collectAsState()
                 Column {
@@ -351,7 +351,7 @@ object AboutScreen : Screen {
                         ) {
                              Icon(Icons.Default.Update, null, modifier = Modifier.size(18.dp))
                              Spacer(Modifier.width(8.dp))
-                             Text("Check for Updates Now", fontWeight = FontWeight.SemiBold)
+                             Text(stringResource(R.string.check_for_updates_now), fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }

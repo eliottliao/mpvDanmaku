@@ -23,6 +23,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import app.marlboroadvance.mpvex.R
 import app.marlboroadvance.mpvex.preferences.DanmakuChineseConversion
 import app.marlboroadvance.mpvex.preferences.DanmakuPreferences
 import app.marlboroadvance.mpvex.preferences.preference.collectAsState
@@ -62,13 +64,9 @@ object DanmakuPreferencesScreen : Screen {
     if (showConsent) {
       AlertDialog(
         onDismissRequest = { showConsent = false },
-        title = { Text("Enable dandanplay danmaku?") },
+        title = { Text(stringResource(R.string.pref_danmaku_enable_consent_title)) },
         text = {
-          Text(
-            "To identify the current episode, mpvDanmaku sends the file name without its path, " +
-              "the MD5 of the first 16 MiB, file size, and duration to the dandanplay open danmaku network. " +
-              "Video contents, local paths, server credentials, and full stream URLs are not uploaded.",
-          )
+          Text(stringResource(R.string.pref_danmaku_enable_consent_message))
         },
         confirmButton = {
           TextButton(
@@ -77,10 +75,10 @@ object DanmakuPreferencesScreen : Screen {
               preferences.enabled.set(true)
               showConsent = false
             },
-          ) { Text("Enable") }
+          ) { Text(stringResource(R.string.pref_danmaku_enable_action)) }
         },
         dismissButton = {
-          TextButton(onClick = { showConsent = false }) { Text("Cancel") }
+          TextButton(onClick = { showConsent = false }) { Text(stringResource(R.string.generic_cancel)) }
         },
       )
     }
@@ -88,7 +86,7 @@ object DanmakuPreferencesScreen : Screen {
     if (showConversionPicker) {
       AlertDialog(
         onDismissRequest = { showConversionPicker = false },
-        title = { Text("Chinese conversion") },
+        title = { Text(stringResource(R.string.pref_danmaku_chinese_conversion_title)) },
         text = {
           androidx.compose.foundation.layout.Column {
             DanmakuChineseConversion.entries.forEach { conversion ->
@@ -106,9 +104,9 @@ object DanmakuPreferencesScreen : Screen {
                 )
                 Text(
                   when (conversion) {
-                    DanmakuChineseConversion.None -> "Do not convert"
-                    DanmakuChineseConversion.Simplified -> "Simplified Chinese"
-                    DanmakuChineseConversion.Traditional -> "Traditional Chinese"
+                    DanmakuChineseConversion.None -> stringResource(R.string.pref_danmaku_conv_none)
+                    DanmakuChineseConversion.Simplified -> stringResource(R.string.pref_danmaku_conv_simplified)
+                    DanmakuChineseConversion.Traditional -> stringResource(R.string.pref_danmaku_conv_traditional)
                   },
                 )
               }
@@ -116,7 +114,7 @@ object DanmakuPreferencesScreen : Screen {
           }
         },
         confirmButton = {
-          TextButton(onClick = { showConversionPicker = false }) { Text("Close") }
+          TextButton(onClick = { showConversionPicker = false }) { Text(stringResource(R.string.generic_close)) }
         },
       )
     }
@@ -139,12 +137,9 @@ object DanmakuPreferencesScreen : Screen {
     if (showClearCacheConfirm) {
       AlertDialog(
         onDismissRequest = { if (!isClearingCache) showClearCacheConfirm = false },
-        title = { Text("Clear danmaku cache?") },
+        title = { Text(stringResource(R.string.pref_danmaku_clear_cache_title)) },
         text = {
-          Text(
-            "All cached dandanplay comments will be removed from this device. " +
-              "Comments are downloaded again the next time they are needed.",
-          )
+          Text(stringResource(R.string.pref_danmaku_clear_cache_message))
         },
         confirmButton = {
           TextButton(
@@ -162,13 +157,13 @@ object DanmakuPreferencesScreen : Screen {
                 clearedSpace = formatByteCount(freedBytes)
               }
             },
-          ) { Text(if (isClearingCache) "Clearing…" else "Clear") }
+          ) { Text(if (isClearingCache) stringResource(R.string.pref_danmaku_clear_cache_clearing) else stringResource(R.string.pref_danmaku_clear_cache_action)) }
         },
         dismissButton = {
           TextButton(
             enabled = !isClearingCache,
             onClick = { showClearCacheConfirm = false },
-          ) { Text("Cancel") }
+          ) { Text(stringResource(R.string.generic_cancel)) }
         },
       )
     }
@@ -176,10 +171,10 @@ object DanmakuPreferencesScreen : Screen {
     clearedSpace?.let { freed ->
       AlertDialog(
         onDismissRequest = { clearedSpace = null },
-        title = { Text("Danmaku cache cleared") },
-        text = { Text("Freed $freed of storage space.") },
+        title = { Text(stringResource(R.string.pref_danmaku_clear_cache_success_title)) },
+        text = { Text(stringResource(R.string.pref_danmaku_clear_cache_freed, freed)) },
         confirmButton = {
-          TextButton(onClick = { clearedSpace = null }) { Text("OK") }
+          TextButton(onClick = { clearedSpace = null }) { Text(stringResource(R.string.generic_ok)) }
         },
       )
     }
@@ -189,7 +184,7 @@ object DanmakuPreferencesScreen : Screen {
         TopAppBar(
           title = {
             Text(
-              text = "Danmaku",
+              text = stringResource(R.string.pref_danmaku_title),
               style = MaterialTheme.typography.headlineSmall,
               color = MaterialTheme.colorScheme.primary,
             )
@@ -198,7 +193,7 @@ object DanmakuPreferencesScreen : Screen {
             IconButton(onClick = backstack::removeLastOrNull) {
               Icon(
                 Icons.AutoMirrored.Outlined.ArrowBack,
-                contentDescription = "Back",
+                contentDescription = stringResource(R.string.back),
                 tint = MaterialTheme.colorScheme.secondary,
               )
             }
@@ -213,7 +208,7 @@ object DanmakuPreferencesScreen : Screen {
               .fillMaxSize()
               .padding(padding),
         ) {
-          item { PreferenceSectionHeader("Dandanplay open danmaku network") }
+          item { PreferenceSectionHeader(stringResource(R.string.pref_danmaku_network_category)) }
           item {
             PreferenceCard {
               SwitchPreference(
@@ -225,8 +220,8 @@ object DanmakuPreferencesScreen : Screen {
                     else -> showConsent = true
                   }
                 },
-                title = { Text("Enable danmaku") },
-                summary = { Text("Match comments only while a video is being played") },
+                title = { Text(stringResource(R.string.pref_danmaku_enable_title)) },
+                summary = { Text(stringResource(R.string.pref_danmaku_enable_summary)) },
               )
 
               PreferenceDivider()
@@ -235,8 +230,8 @@ object DanmakuPreferencesScreen : Screen {
               SwitchPreference(
                 value = autoMatch,
                 onValueChange = preferences.autoMatch::set,
-                title = { Text("Automatic matching") },
-                summary = { Text("Only exact matches are selected automatically") },
+                title = { Text(stringResource(R.string.pref_danmaku_auto_match_title)) },
+                summary = { Text(stringResource(R.string.pref_danmaku_auto_match_summary)) },
                 enabled = enabled,
               )
 
@@ -246,8 +241,8 @@ object DanmakuPreferencesScreen : Screen {
               SwitchPreference(
                 value = showRelated,
                 onValueChange = preferences.showRelated::set,
-                title = { Text("Include related comments") },
-                summary = { Text("Merge supported third-party comment sources") },
+                title = { Text(stringResource(R.string.pref_danmaku_show_related_title)) },
+                summary = { Text(stringResource(R.string.pref_danmaku_show_related_summary)) },
                 enabled = enabled,
               )
 
@@ -255,13 +250,13 @@ object DanmakuPreferencesScreen : Screen {
 
               val conversion by preferences.chConvert.collectAsState()
               Preference(
-                title = { Text("Chinese conversion") },
+                title = { Text(stringResource(R.string.pref_danmaku_chinese_conversion_title)) },
                 summary = {
                   Text(
                     when (conversion) {
-                      DanmakuChineseConversion.None -> "Do not convert"
-                      DanmakuChineseConversion.Simplified -> "Simplified Chinese"
-                      DanmakuChineseConversion.Traditional -> "Traditional Chinese"
+                      DanmakuChineseConversion.None -> stringResource(R.string.pref_danmaku_conv_none)
+                      DanmakuChineseConversion.Simplified -> stringResource(R.string.pref_danmaku_conv_simplified)
+                      DanmakuChineseConversion.Traditional -> stringResource(R.string.pref_danmaku_conv_traditional)
                     },
                   )
                 },
@@ -271,7 +266,7 @@ object DanmakuPreferencesScreen : Screen {
             }
           }
 
-          item { PreferenceSectionHeader("Appearance") }
+          item { PreferenceSectionHeader(stringResource(R.string.pref_appearance_title)) }
           item {
             PreferenceCard {
               val opacity by preferences.opacity.collectAsState()
@@ -280,7 +275,7 @@ object DanmakuPreferencesScreen : Screen {
                 onValueChange = preferences.opacity::set,
                 sliderValue = opacity,
                 onSliderValueChange = preferences.opacity::set,
-                title = { Text("Opacity") },
+                title = { Text(stringResource(R.string.player_danmaku_opacity)) },
                 summary = { Text("${(opacity * 100).roundToInt()}%") },
                 valueRange = 0.2f..1f,
                 enabled = enabled,
@@ -294,8 +289,8 @@ object DanmakuPreferencesScreen : Screen {
                 onValueChange = preferences.fontSize::set,
                 sliderValue = fontSize,
                 onSliderValueChange = preferences.fontSize::set,
-                title = { Text("Font size") },
-                summary = { Text("${fontSize.roundToInt()} sp") },
+                title = { Text(stringResource(R.string.player_danmaku_font_size)) },
+                summary = { Text(stringResource(R.string.player_danmaku_font_size_value, fontSize.roundToInt())) },
                 valueRange = 16f..48f,
                 enabled = enabled,
               )
@@ -308,7 +303,7 @@ object DanmakuPreferencesScreen : Screen {
                 onValueChange = preferences.speed::set,
                 sliderValue = speed,
                 onSliderValueChange = preferences.speed::set,
-                title = { Text("Scroll speed") },
+                title = { Text(stringResource(R.string.pref_danmaku_speed_title)) },
                 summary = { Text(String.format("%.1fx", speed)) },
                 valueRange = 0.5f..2f,
                 enabled = enabled,
@@ -322,7 +317,7 @@ object DanmakuPreferencesScreen : Screen {
                 onValueChange = preferences.density::set,
                 sliderValue = density,
                 onSliderValueChange = preferences.density::set,
-                title = { Text("Density") },
+                title = { Text(stringResource(R.string.player_danmaku_density)) },
                 summary = { Text("${(density * 100).roundToInt()}%") },
                 valueRange = 0.1f..1f,
                 enabled = enabled,
@@ -336,22 +331,22 @@ object DanmakuPreferencesScreen : Screen {
                 onValueChange = preferences.displayArea::set,
                 sliderValue = displayArea,
                 onSliderValueChange = preferences.displayArea::set,
-                title = { Text("Display area") },
-                summary = { Text("Top ${(displayArea * 100).roundToInt()}% of the player") },
+                title = { Text(stringResource(R.string.player_danmaku_display_area)) },
+                summary = { Text(stringResource(R.string.pref_danmaku_display_area_summary, (displayArea * 100).roundToInt())) },
                 valueRange = 0.25f..1f,
                 enabled = enabled,
               )
             }
           }
 
-          item { PreferenceSectionHeader("Modes and playback") }
+          item { PreferenceSectionHeader(stringResource(R.string.pref_danmaku_modes_category)) }
           item {
             PreferenceCard {
               val showScrolling by preferences.showScrolling.collectAsState()
               SwitchPreference(
                 value = showScrolling,
                 onValueChange = preferences.showScrolling::set,
-                title = { Text("Scrolling comments") },
+                title = { Text(stringResource(R.string.pref_danmaku_show_scrolling)) },
                 enabled = enabled,
               )
               PreferenceDivider()
@@ -359,7 +354,7 @@ object DanmakuPreferencesScreen : Screen {
               SwitchPreference(
                 value = showTop,
                 onValueChange = preferences.showTop::set,
-                title = { Text("Top comments") },
+                title = { Text(stringResource(R.string.pref_danmaku_show_top)) },
                 enabled = enabled,
               )
               PreferenceDivider()
@@ -367,7 +362,7 @@ object DanmakuPreferencesScreen : Screen {
               SwitchPreference(
                 value = showBottom,
                 onValueChange = preferences.showBottom::set,
-                title = { Text("Bottom comments") },
+                title = { Text(stringResource(R.string.pref_danmaku_show_bottom)) },
                 enabled = enabled,
               )
               PreferenceDivider()
@@ -375,32 +370,32 @@ object DanmakuPreferencesScreen : Screen {
               SwitchPreference(
                 value = showInPip,
                 onValueChange = preferences.showInPip::set,
-                title = { Text("Show in picture-in-picture") },
-                summary = { Text("Disabled by default for readability and performance") },
+                title = { Text(stringResource(R.string.pref_danmaku_show_in_pip_title)) },
+                summary = { Text(stringResource(R.string.pref_danmaku_show_in_pip_summary)) },
                 enabled = enabled,
               )
             }
           }
 
-          item { PreferenceSectionHeader("Cache and filtering") }
+          item { PreferenceSectionHeader(stringResource(R.string.pref_danmaku_cache_filtering_category)) }
           item {
             PreferenceCard {
               SwitchPreference(
                 value = regexEnabled,
                 onValueChange = preferences.keywordRegexEnabled::set,
-                title = { Text("Regular expression keywords") },
-                summary = { Text("Interpret blocked keywords as regular expressions") },
+                title = { Text(stringResource(R.string.pref_danmaku_regex_keywords_title)) },
+                summary = { Text(stringResource(R.string.pref_danmaku_regex_keywords_summary)) },
                 enabled = enabled,
               )
               PreferenceDivider()
               Preference(
-                title = { Text("Blocked keywords") },
+                title = { Text(stringResource(R.string.pref_danmaku_blocked_keywords_title)) },
                 summary = {
                   Text(
                     if (blockedKeywords.isEmpty()) {
-                      "No blocked keywords"
+                      stringResource(R.string.pref_danmaku_blocked_keywords_empty)
                     } else {
-                      "${blockedKeywords.size} keyword${if (blockedKeywords.size == 1) "" else "s"} blocked"
+                      stringResource(R.string.pref_danmaku_blocked_keywords_count, blockedKeywords.size)
                     },
                   )
                 },
@@ -409,8 +404,8 @@ object DanmakuPreferencesScreen : Screen {
               )
               PreferenceDivider()
               Preference(
-                title = { Text("Clear danmaku cache") },
-                summary = { Text("Remove all cached dandanplay comments") },
+                title = { Text(stringResource(R.string.pref_danmaku_clear_cache_pref_title)) },
+                summary = { Text(stringResource(R.string.pref_danmaku_clear_cache_pref_summary)) },
                 onClick = { showClearCacheConfirm = true },
               )
             }

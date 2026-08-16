@@ -359,7 +359,7 @@ object SubtitlesPreferencesScreen : Screen {
 
           // === ONLINE SUBTITLE SECTION ===
           item {
-            PreferenceSectionHeader(title = "Subtitle Search")
+            PreferenceSectionHeader(title = stringResource(R.string.pref_category_subtitle_search))
           }
 
           item {

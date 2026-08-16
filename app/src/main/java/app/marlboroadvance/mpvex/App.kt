@@ -18,10 +18,15 @@ import org.koin.android.ext.koin.androidContext
 import org.koin.core.context.startKoin
 import org.koin.core.annotation.KoinExperimentalAPI
 
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.os.LocaleListCompat
+import app.marlboroadvance.mpvex.preferences.AppearancePreferences
+
 @OptIn(KoinExperimentalAPI::class)
 class App : Application() {
   private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
   private val metadataCache: VideoMetadataCacheRepository by inject()
+  private val appearancePreferences: AppearancePreferences by inject()
 
   override fun onCreate() {
     super.onCreate()
@@ -36,6 +41,11 @@ class App : Application() {
         app.marlboroadvance.mpvex.di.domainModule,
         app.marlboroadvance.mpvex.di.danmakuModule,
       )
+    }
+
+    val savedLang = appearancePreferences.appLanguage.get()
+    if (savedLang.isNotEmpty()) {
+      AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags(savedLang))
     }
 
     Thread.setDefaultUncaughtExceptionHandler(GlobalExceptionHandler(applicationContext, CrashActivity::class.java))

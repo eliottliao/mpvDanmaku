@@ -41,6 +41,36 @@ import kotlin.math.roundToInt
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
+import androidx.annotation.StringRes
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.os.LocaleListCompat
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.Role
+import me.zhanghai.compose.preference.Preference
+
+private data class AppLanguageOption(
+    val tag: String,
+    @StringRes val titleRes: Int,
+)
+
+private val availableAppLanguages = listOf(
+    AppLanguageOption("", R.string.language_system_default),
+    AppLanguageOption("zh-CN", R.string.language_zh_cn),
+    AppLanguageOption("zh-HK", R.string.language_zh_hk),
+    AppLanguageOption("zh-TW", R.string.language_zh_tw),
+    AppLanguageOption("en", R.string.language_en),
+)
+
 @Serializable
 object AppearancePreferencesScreen : Screen {
     @OptIn(ExperimentalMaterial3Api::class)
@@ -52,14 +82,70 @@ object AppearancePreferencesScreen : Screen {
         val backstack = LocalBackStack.current
         val systemDarkTheme = isSystemInDarkTheme()
 
+        val appLanguage by preferences.appLanguage.collectAsState()
         val darkMode by preferences.darkMode.collectAsState()
         val appTheme by preferences.appTheme.collectAsState()
+
+        var showLanguageDialog by remember { mutableStateOf(false) }
 
         // Determine if we're in dark mode for theme preview
         val isDarkMode = when (darkMode) {
             DarkMode.Dark -> true
             DarkMode.Light -> false
             DarkMode.System -> systemDarkTheme
+        }
+
+        if (showLanguageDialog) {
+            AlertDialog(
+                onDismissRequest = { showLanguageDialog = false },
+                title = {
+                    Text(
+                        text = stringResource(R.string.pref_appearance_language_title),
+                        style = MaterialTheme.typography.headlineSmall,
+                    )
+                },
+                text = {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        availableAppLanguages.forEach { option ->
+                            val isSelected = appLanguage == option.tag
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp)
+                                    .selectable(
+                                        selected = isSelected,
+                                        role = Role.RadioButton,
+                                        onClick = {
+                                            preferences.appLanguage.set(option.tag)
+                                            if (option.tag.isEmpty()) {
+                                                AppCompatDelegate.setApplicationLocales(LocaleListCompat.getEmptyLocaleList())
+                                            } else {
+                                                AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags(option.tag))
+                                            }
+                                            showLanguageDialog = false
+                                        },
+                                    ),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                RadioButton(
+                                    selected = isSelected,
+                                    onClick = null,
+                                )
+                                Text(
+                                    text = stringResource(option.titleRes),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    modifier = Modifier.padding(start = 16.dp),
+                                )
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showLanguageDialog = false }) {
+                        Text(stringResource(R.string.generic_close))
+                    }
+                },
+            )
         }
 
         Scaffold(
@@ -92,6 +178,32 @@ object AppearancePreferencesScreen : Screen {
                         .fillMaxSize()
                         .padding(padding),
                 ) {
+                    item {
+                        PreferenceSectionHeader(title = stringResource(id = R.string.pref_appearance_category_general))
+                    }
+
+                    item {
+                        PreferenceCard {
+                            val currentLangOption = availableAppLanguages.firstOrNull { it.tag == appLanguage }
+                            val currentLangSummary = if (currentLangOption != null) {
+                                stringResource(currentLangOption.titleRes)
+                            } else {
+                                stringResource(R.string.language_system_default)
+                            }
+
+                            Preference(
+                                title = { Text(text = stringResource(id = R.string.pref_appearance_language_title)) },
+                                summary = {
+                                    Text(
+                                        text = currentLangSummary,
+                                        color = MaterialTheme.colorScheme.outline,
+                                    )
+                                },
+                                onClick = { showLanguageDialog = true },
+                            )
+                        }
+                    }
+
                     item {
                         PreferenceSectionHeader(title = stringResource(id = R.string.pref_appearance_category_theme))
                     }

@@ -20,6 +20,7 @@ import kotlinx.collections.immutable.ImmutableList
 class AppearancePreferences(
   preferenceStore: PreferenceStore,
 ) {
+  val appLanguage = preferenceStore.getString("app_language", "")
   val darkMode = preferenceStore.getEnum("dark_mode", DarkMode.System)
   val appTheme = preferenceStore.getEnum("app_theme", AppTheme.Dynamic)
   val amoledMode = preferenceStore.getBoolean("amoled_mode", false)

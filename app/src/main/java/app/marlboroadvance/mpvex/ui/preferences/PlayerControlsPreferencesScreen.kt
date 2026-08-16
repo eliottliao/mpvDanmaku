@@ -130,7 +130,7 @@ object PlayerControlsPreferencesScreen : Screen {
         ) {
           // Landscape Controls Section
           item {
-            PreferenceSectionHeader(title = "Landscape Controls")
+            PreferenceSectionHeader(title = stringResource(R.string.pref_category_landscape_controls))
           }
           
           item {
@@ -167,7 +167,7 @@ object PlayerControlsPreferencesScreen : Screen {
           
           // Portrait Controls Section
           item {
-            PreferenceSectionHeader(title = "Portrait Controls")
+            PreferenceSectionHeader(title = stringResource(R.string.pref_category_portrait_controls))
           }
 
           item {
@@ -186,7 +186,7 @@ object PlayerControlsPreferencesScreen : Screen {
           
           // Seekbar Section
           item {
-            PreferenceSectionHeader(title = "Seekbar Style")
+            PreferenceSectionHeader(title = stringResource(R.string.pref_category_seekbar_style))
           }
 
           item {
@@ -219,7 +219,7 @@ object PlayerControlsPreferencesScreen : Screen {
           
           // Appearance Section
           item {
-            PreferenceSectionHeader(title = "Appearance")
+            PreferenceSectionHeader(title = stringResource(R.string.pref_appearance_title))
           }
           
           item {
