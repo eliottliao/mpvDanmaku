@@ -58,6 +58,9 @@ import `is`.xyz.mpv.MPVLib
 import `is`.xyz.mpv.MPVNode
 import `is`.xyz.mpv.Utils
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -518,13 +521,21 @@ class PlayerActivity :
           }
         }
         launch {
-          viewModel.danmakuClock.collect { clock ->
-            binding.danmakuOverlay.updateClock(
-              positionMillis = clock.positionMillis,
-              isPlaying = clock.isPlaying,
-              playbackSpeed = clock.playbackSpeed,
-            )
-          }
+          combine(
+            viewModel.danmaku.renderConfig,
+            viewModel.danmaku.items,
+          ) { config, items -> config.enabled && items.isNotEmpty() }
+            .distinctUntilChanged()
+            .collectLatest { shouldObserveClock ->
+              if (!shouldObserveClock) return@collectLatest
+              viewModel.danmakuClock.collect { clock ->
+                binding.danmakuOverlay.updateClock(
+                  positionMillis = clock.positionMillis,
+                  isPlaying = clock.isPlaying,
+                  playbackSpeed = clock.playbackSpeed,
+                )
+              }
+            }
         }
       }
     }

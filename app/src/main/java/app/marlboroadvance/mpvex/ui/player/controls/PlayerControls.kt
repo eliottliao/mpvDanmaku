@@ -169,9 +169,6 @@ fun PlayerControls(
   val pausedForCache by MPVLib.propBoolean["paused-for-cache"].collectAsState()
   val paused by MPVLib.propBoolean["pause"].collectAsState()
   val duration by MPVLib.propInt["duration"].collectAsState()
-  val position by MPVLib.propInt["time-pos"].collectAsState()
-  val precisePosition by viewModel.precisePosition.collectAsState()
-  val preciseDuration by viewModel.preciseDuration.collectAsState()
   val playbackSpeed by MPVLib.propFloat["speed"].collectAsState()
   val doubleTapSeekAmount by viewModel.doubleTapSeekAmount.collectAsState()
   val showDoubleTapOvals by playerPreferences.showDoubleTapOvals.collectAsState()
@@ -889,6 +886,8 @@ fun PlayerControls(
                 end.linkTo(parent.end, spacing.large)
               },
         ) {
+          val precisePosition by viewModel.precisePosition.collectAsState()
+          val preciseDuration by viewModel.preciseDuration.collectAsState()
           val invertDuration by playerPreferences.invertDuration.collectAsState()
           val seekbarStyle by appearancePreferences.seekbarStyle.collectAsState()
           var wasPlayerAlreadyPaused by remember { mutableStateOf(false) }

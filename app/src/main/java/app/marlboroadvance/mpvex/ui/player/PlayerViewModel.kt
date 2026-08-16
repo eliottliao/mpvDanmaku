@@ -43,7 +43,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -73,6 +75,12 @@ data class DanmakuClockState(
   val isPlaying: Boolean = false,
   val playbackSpeed: Float = 1f,
 )
+
+private enum class PositionPollingDemand {
+  NONE,
+  DANMAKU,
+  PRECISE_UI,
+}
 
 class PlayerViewModelProviderFactory(
   private val host: PlayerHost,
@@ -196,26 +204,49 @@ class PlayerViewModel(
   private val _danmakuClock = MutableStateFlow(DanmakuClockState())
   val danmakuClock = _danmakuClock.asStateFlow()
 
+  private val positionPollingDemand = combine(
+    _precisePosition.subscriptionCount,
+    _danmakuClock.subscriptionCount,
+  ) { preciseSubscribers, danmakuSubscribers ->
+    when {
+      preciseSubscribers > 0 -> PositionPollingDemand.PRECISE_UI
+      danmakuSubscribers > 0 -> PositionPollingDemand.DANMAKU
+      else -> PositionPollingDemand.NONE
+    }
+  }.distinctUntilChanged()
+
   // Audio state
   val currentVolume = MutableStateFlow(host.audioManager.getStreamVolume(AudioManager.STREAM_MUSIC))
   private val volumeBoostCap by MPVLib.propInt["volume-max"].collectAsState(viewModelScope)
 
   init {
-    // Poll precise position; while paused it only changes on seek, so poll lazily
+    // The seekbar and danmaku renderer are the only consumers of the precise clock.
     viewModelScope.launch(Dispatchers.Default) {
-      while (isActive) {
-        val time = runCatching { MPVLib.getPropertyDouble("time-pos") }.getOrNull()
-        val pausedValue = paused
-        val speed = playbackSpeed?.coerceIn(0.05f, 8f) ?: 1f
-        if (time != null) {
-          _precisePosition.value = time.toFloat()
+      positionPollingDemand.collectLatest { demand ->
+        if (demand == PositionPollingDemand.NONE) return@collectLatest
+
+        while (isActive) {
+          val time = runCatching { MPVLib.getPropertyDouble("time-pos") }.getOrNull()
+          val pausedValue = paused
+          val isPlaying = pausedValue == false
+          val speed = playbackSpeed?.coerceIn(0.05f, 8f) ?: 1f
+          if (time != null) {
+            _precisePosition.value = time.toFloat()
+          }
+          _danmakuClock.value = DanmakuClockState(
+            positionMillis = time?.let { (it * 1_000.0).toLong() },
+            isPlaying = isPlaying,
+            playbackSpeed = speed,
+          )
+          delay(
+            when (demand) {
+              PositionPollingDemand.PRECISE_UI ->
+                if (isPlaying) PRECISE_POSITION_PLAYING_INTERVAL_MS else PRECISE_POSITION_IDLE_INTERVAL_MS
+              PositionPollingDemand.DANMAKU -> DANMAKU_CLOCK_REANCHOR_INTERVAL_MS
+              PositionPollingDemand.NONE -> error("Inactive polling demand")
+            },
+          )
         }
-        _danmakuClock.value = DanmakuClockState(
-          positionMillis = time?.let { (it * 1_000.0).toLong() },
-          isPlaying = pausedValue == false,
-          playbackSpeed = speed,
-        )
-        delay(if (pausedValue != true) 42 else 100) // ~24fps while playing
       }
     }
 
@@ -418,6 +449,9 @@ class PlayerViewModel(
   private companion object {
     const val TAG = "PlayerViewModel"
     const val SEEK_COALESCE_DELAY_MS = 60L
+    const val PRECISE_POSITION_PLAYING_INTERVAL_MS = 42L
+    const val PRECISE_POSITION_IDLE_INTERVAL_MS = 100L
+    const val DANMAKU_CLOCK_REANCHOR_INTERVAL_MS = 250L
     val VALID_SUBTITLE_EXTENSIONS =
       setOf(
         // Common & modern
